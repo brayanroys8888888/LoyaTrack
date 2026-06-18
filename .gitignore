@@ -1,6 +1,7 @@
 # ===================== SECRETS — NE JAMAIS COMMITTER =====================
 **/.env
 **/.env.*
+!**/.env.example
 **/firebase-adminsdk.json
 **/firebase-adminsdk*.json
 *.pem
