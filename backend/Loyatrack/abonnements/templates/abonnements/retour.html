@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Paiement — Loyatrack</title>
+  <style>
+    body { font-family:-apple-system,Segoe UI,Roboto,sans-serif; background:#f4f6f8; color:#1a2233;
+           display:flex; min-height:100vh; align-items:center; justify-content:center; margin:0; }
+    .box { text-align:center; padding:32px; max-width:420px; }
+    .ok { color:#2E7D32; font-size:48px; }
+    .pending { color:#F57C00; font-size:48px; }
+    h1 { font-size:22px; margin:8px 0; }
+    p { color:#5f6368; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    {% if abonnement and abonnement.est_actif %}
+      <div class="ok">✓</div>
+      <h1>Abonnement activé</h1>
+      <p>Votre formule <strong>{{ abonnement.get_plan_display }}</strong> est active jusqu'au
+         {{ abonnement.date_fin|date:"d/m/Y" }}.
+         Vous pouvez retourner dans l'application.</p>
+      {% if transaction %}
+        <p><a href="{% url 'abonnement_recu' transaction.reference_interne %}">Télécharger le reçu (PDF)</a></p>
+      {% endif %}
+    {% else %}
+      <div class="pending">⏳</div>
+      <h1>Paiement en cours de traitement</h1>
+      <p>Votre paiement est en cours de validation. Votre accès sera débloqué dès confirmation.</p>
+    {% endif %}
+  </div>
+</body>
+</html>

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Espace locataire — Loyatrack</title>
+  <style>
+    body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; background: #f4f6f8; color: #1a2233; }
+    .header { background: linear-gradient(135deg,#1565C0,#2E7D32); color:#fff; padding: 24px 16px; }
+    .header h1 { margin: 0; font-size: 20px; }
+    .header p { margin: 4px 0 0; opacity: .9; font-size: 14px; }
+    .card { background:#fff; margin:16px; border-radius:12px; padding:16px; box-shadow:0 1px 4px rgba(0,0,0,.06); }
+    h2 { font-size:15px; margin:0 0 12px; }
+    table { width:100%; border-collapse: collapse; font-size:14px; }
+    th, td { text-align:left; padding:8px; border-bottom:1px solid #eee; }
+    .montant { color:#2E7D32; font-weight:600; }
+    .empty { color:#888; font-size:14px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Bonjour {{ locataire.prenom }} {{ locataire.nom }}</h1>
+    <p>Votre espace locataire — Loyatrack</p>
+  </div>
+
+  <div class="card">
+    <h2>Mon logement</h2>
+    <p>Logement : <strong>{{ locataire.unite|default:locataire.logement|default:"—" }}</strong><br>
+       Loyer mensuel : <strong>{{ locataire.montant_loyer }} FCFA</strong><br>
+       Échéance : le {{ locataire.jour_echeance }} de chaque mois</p>
+  </div>
+
+  <div class="card">
+    <h2>Mes paiements</h2>
+    {% if paiements %}
+    <table>
+      <tr><th>Date</th><th>Montant</th><th>Mode</th><th>Statut</th></tr>
+      {% for p in paiements %}
+      <tr><td>{{ p.date_paiement }}</td><td class="montant">{{ p.montant }} FCFA</td><td>{{ p.mode_paiement }}</td><td>{{ p.statut }}</td></tr>
+      {% endfor %}
+    </table>
+    {% else %}<p class="empty">Aucun paiement enregistré.</p>{% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Mes pénalités</h2>
+    {% if penalites %}
+    <table>
+      <tr><th>Période</th><th>Montant</th><th>Statut</th></tr>
+      {% for pen in penalites %}
+      <tr><td>{{ pen.periode|default:pen.date_debut }}</td><td>{{ pen.montant_net }} FCFA</td><td>{{ pen.statut }}</td></tr>
+      {% endfor %}
+    </table>
+    {% else %}<p class="empty">Aucune pénalité.</p>{% endif %}
+  </div>
+</body>
+</html>

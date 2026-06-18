@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mon abonnement — Loyatrack</title>
+  <style>
+    :root { --blue:#1565C0; --ink:#1a2233; --sub:#5f6368; }
+    * { box-sizing:border-box; }
+    body { font-family:-apple-system,Segoe UI,Roboto,sans-serif; background:#f4f6f8; color:var(--ink);
+           margin:0; padding:24px; }
+    .wrap { max-width:680px; margin:0 auto; }
+    h1 { font-size:24px; margin:0 0 4px; }
+    .muted { color:var(--sub); font-size:14px; }
+    .statut { display:inline-block; padding:6px 12px; border-radius:999px; font-size:13px; font-weight:600;
+              background:#E3F2FD; color:var(--blue); margin:12px 0 24px; }
+    .plans { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    @media (max-width:560px){ .plans{ grid-template-columns:1fr; } }
+    .card { background:#fff; border:1px solid #e0e0e0; border-radius:16px; padding:20px; }
+    .card.pro { border:2px solid var(--blue); }
+    .card h2 { margin:0 0 6px; font-size:20px; }
+    .price { font-size:15px; font-weight:700; color:var(--blue); }
+    .price small { color:var(--sub); font-weight:400; }
+    ul { padding-left:18px; margin:12px 0; color:var(--sub); font-size:13px; }
+    .row { display:flex; gap:8px; margin-top:12px; }
+    button { flex:1; padding:11px; border:none; border-radius:10px; font-size:14px; font-weight:600;
+             cursor:pointer; background:var(--blue); color:#fff; }
+    button.ghost { background:#fff; color:var(--blue); border:1px solid var(--blue); }
+    .note { color:#9e9e9e; font-size:12px; margin-top:20px; text-align:center; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Mon abonnement</h1>
+    <div class="muted">Loyatrack — Gestion locative</div>
+    <div class="statut">
+      Formule : {{ abonnement.get_plan_display }} ·
+      Statut : {{ abonnement.get_statut_display }} ·
+      {{ abonnement.jours_restants }} jour(s) restant(s)
+    </div>
+
+    <div class="plans">
+      {% for p in plans %}
+      <div class="card {% if p.cle == 'pro' %}pro{% endif %}">
+        <h2>{{ p.nom }}</h2>
+        <div class="price">{{ p.mensuel }} FCFA<small>/mois</small></div>
+        <div class="muted">{{ p.annuel }} FCFA/an</div>
+        {% if p.features %}
+        <ul>
+          {% for f in p.features %}<li>{{ f }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+        <div class="row">
+          <form method="post" action="{% url 'abonnement_payer' %}">
+            {% csrf_token %}
+            <input type="hidden" name="plan" value="{{ p.cle }}">
+            <input type="hidden" name="periodicite" value="mensuel">
+            <button type="submit">Payer au mois</button>
+          </form>
+          <form method="post" action="{% url 'abonnement_payer' %}">
+            {% csrf_token %}
+            <input type="hidden" name="plan" value="{{ p.cle }}">
+            <input type="hidden" name="periodicite" value="annuel">
+            <button type="submit" class="ghost">À l'année</button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="note">Paiement sécurisé via Mobile Money / carte. La délivrance se fait en ligne.</div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,49 @@
+# ===================== SECRETS — NE JAMAIS COMMITTER =====================
+**/.env
+**/.env.*
+**/firebase-adminsdk.json
+**/firebase-adminsdk*.json
+*.pem
+*.key
+*.keystore
+**/google-services.json
+**/GoogleService-Info.plist
+
+# ===================== Python / Django =====================
+backend/env/
+backend/venv/
+**/__pycache__/
+*.py[cod]
+*.sqlite3
+backend/Loyatrack/media/
+backend/Loyatrack/staticfiles/
+backend/Loyatrack/static/
+*.log
+
+# ===================== Flutter / Dart =====================
+frontend/papillongestion/build/
+frontend/papillongestion/.dart_tool/
+frontend/papillongestion/.flutter-plugins
+frontend/papillongestion/.flutter-plugins-dependencies
+frontend/papillongestion/.packages
+frontend/papillongestion/.pub-cache/
+frontend/papillongestion/.pub/
+**/.dart_tool/
+**/build/
+*.iml
+
+# ===================== IDE / OS =====================
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ===================== Artefacts locaux / démo =====================
+Capture d'écran*.png
+exemple_*.pdf
+exemple_*.xlsx
+~$*
+.screens/
+_verif*.py
+_tok.py
+_loc.py
