@@ -4,6 +4,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
+import '../core/api_config.dart';
 
 /// Handles background messages when app is terminated or in background
 @pragma('vm:entry-point')
@@ -12,7 +13,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 class FirebaseService {
-  static const String _baseUrl = 'http://10.0.2.2:8000/api/v1';
+  static final String _baseUrl = ApiConfig.apiRoot;
   static const _storage = FlutterSecureStorage();
 
   static final FlutterLocalNotificationsPlugin _localNotifications =

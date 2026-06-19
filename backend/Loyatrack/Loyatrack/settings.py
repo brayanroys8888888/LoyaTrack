@@ -32,7 +32,16 @@ SECRET_KEY = env('SECRET_KEY', default='django-insecure-ob6#$5#_=63id$78rnh1%te9
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env.bool('DEBUG', default=True)
 
-ALLOWED_HOSTS = ['10.0.2.2', 'localhost', '127.0.0.1']
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['10.0.2.2', 'localhost', '127.0.0.1'])
+# Render fournit automatiquement le hostname public du service.
+_RENDER_HOST = env('RENDER_EXTERNAL_HOSTNAME', default='')
+if _RENDER_HOST:
+    ALLOWED_HOSTS.append(_RENDER_HOST)
+
+# Origines de confiance pour le CSRF (pages web : abonnement bailleur, admin).
+CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=[])
+if _RENDER_HOST:
+    CSRF_TRUSTED_ORIGINS.append(f'https://{_RENDER_HOST}')
 
 
 
@@ -67,6 +76,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # sert les fichiers statiques en prod
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -98,12 +108,17 @@ WSGI_APPLICATION = 'Loyatrack.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+# PostgreSQL en prod via DATABASE_URL (Render) ; SQLite en local sinon.
+if env('DATABASE_URL', default=''):
+    DATABASES = {'default': env.db('DATABASE_URL')}
+    DATABASES['default']['CONN_MAX_AGE'] = 600
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
-}
 
 
 # Password validation
@@ -141,6 +156,12 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+# WhiteNoise : compression + manifeste (CSS de l'admin/Swagger servis en prod).
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'},
+}
 
 # Media files (uploads : pièces d'identité, photos d'état des lieux, documents PDF)
 MEDIA_URL = '/media/'
@@ -184,8 +205,22 @@ SWAGGER_SETTINGS = {
     }
 }
 
-# CORS Settings
-CORS_ALLOW_ALL_ORIGINS = True  # For dev only. In prod, configure CORS_ALLOWED_ORIGINS
+# CORS : tout ouvert en dev ; restreint par liste blanche en prod.
+# (L'app mobile utilise JWT sans cookies → CORS ne la concerne pas ; utile pour le web.)
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
+else:
+    CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[])
+
+# Sécurité HTTPS activée uniquement en prod (DEBUG=False).
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')  # derrière le proxy Render
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 2592000  # 30 jours
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
 
 from celery.schedules import crontab
 

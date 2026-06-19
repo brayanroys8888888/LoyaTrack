@@ -1,9 +1,10 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../core/api_config.dart';
 
 class NotificationService {
-  static const String baseUrl = 'http://10.0.2.2:8000/api/v1';
+  static final String baseUrl = ApiConfig.apiRoot;
   static const _storage = FlutterSecureStorage();
 
   static Future<String?> _getToken() async {
