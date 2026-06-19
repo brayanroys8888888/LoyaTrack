@@ -38,3 +38,14 @@ services:
       # --- Abonnement : 'fake' pour tester sans CinetPay ---
       - key: PAIEMENT_PROVIDER
         value: "fake"
+      # --- Stockage médias Cloudflare R2 (laisser vide = disque éphémère Render) ---
+      - key: R2_BUCKET
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_ENDPOINT_URL
+        sync: false
+      - key: R2_PUBLIC_DOMAIN
+        sync: false

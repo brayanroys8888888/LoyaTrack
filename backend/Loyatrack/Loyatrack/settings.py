@@ -157,11 +157,37 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-# WhiteNoise : compression + manifeste (CSS de l'admin/Swagger servis en prod).
-STORAGES = {
-    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
-    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'},
-}
+
+# Stockage des statiques : WhiteNoise (CSS admin/Swagger servis en prod).
+_STATIC_STORAGE = {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'}
+
+# Médias (pièces d'identité, photos d'état des lieux) :
+# - Cloudflare R2 (S3-compatible) en prod si R2_BUCKET est défini → uploads persistants.
+# - Disque local sinon (dev). Firebase n'est PAS utilisé pour le stockage (push uniquement).
+_R2_BUCKET = env('R2_BUCKET', default='')
+if _R2_BUCKET:
+    _media_options = {
+        'bucket_name': _R2_BUCKET,
+        'access_key': env('R2_ACCESS_KEY_ID', default=''),
+        'secret_key': env('R2_SECRET_ACCESS_KEY', default=''),
+        'endpoint_url': env('R2_ENDPOINT_URL', default=''),
+        'region_name': 'auto',
+        'signature_version': 's3v4',
+        'querystring_auth': False,  # URLs publiques (bucket public R2)
+        'default_acl': None,        # R2 ne gère pas les ACL S3
+    }
+    _r2_public = env('R2_PUBLIC_DOMAIN', default='')  # ex. pub-xxxx.r2.dev ou media.loyatrack.com
+    if _r2_public:
+        _media_options['custom_domain'] = _r2_public
+    STORAGES = {
+        'default': {'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage', 'OPTIONS': _media_options},
+        'staticfiles': _STATIC_STORAGE,
+    }
+else:
+    STORAGES = {
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': _STATIC_STORAGE,
+    }
 
 # Media files (uploads : pièces d'identité, photos d'état des lieux, documents PDF)
 MEDIA_URL = '/media/'

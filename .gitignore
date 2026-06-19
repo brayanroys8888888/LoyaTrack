@@ -48,3 +48,6 @@ exemple_*.xlsx
 _verif*.py
 _tok.py
 _loc.py
+
+# APK builds
+*.apk
