@@ -67,8 +67,8 @@ flutter:
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: true
-  image_path: "assets/images/icon/HeroIcon.png"
+  image_path: "assets/images/icon/loyatrack_icon.png"
   min_sdk_android: 21
-  adaptive_icon_background: "#1565C0" 
-  adaptive_icon_foreground: "assets/images/icon/HeroIcon.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/images/icon/loyatrack_adaptive.png"
   remove_alpha_ios: true
