@@ -42,7 +42,11 @@ class AuthService {
   Future<void> _saveTokens(Map data) async {
     await _storage.write(key: 'access_token', value: data['access']);
     await _storage.write(key: 'refresh_token', value: data['refresh']);
-    await FirebaseService.registerTokenWithBackend();
+    // L'enregistrement du jeton FCM ne doit JAMAIS faire échouer la connexion /
+    // l'inscription (réseau lent, FCM indisponible…) : on l'isole.
+    try {
+      await FirebaseService.registerTokenWithBackend();
+    } catch (_) {/* non bloquant */}
   }
 
   /// Connexion par téléphone OU email + mot de passe.
