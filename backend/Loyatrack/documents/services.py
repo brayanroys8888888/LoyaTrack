@@ -20,6 +20,52 @@ from reportlab.platypus import (
 BLANC = "________________"
 
 
+def champs_manquants_contrat(locataire):
+    """Informations *légalement indispensables* manquantes pour générer le
+    contrat de bail (loi camerounaise n°2014/023). Renvoie une liste de dicts
+    ``{'champ', 'libelle', 'cible'}`` où ``cible`` vaut ``'bailleur'`` ou
+    ``'locataire'`` afin de rediriger l'utilisateur vers le bon écran.
+
+    Tant que cette liste n'est pas vide, AUCUN document ne doit être généré.
+    """
+    bailleur = locataire.bailleur
+    manquants = []
+
+    def exiger(vide, champ, libelle, cible):
+        if vide:
+            manquants.append({'champ': champ, 'libelle': libelle, 'cible': cible})
+
+    # ── Bailleur (mentions obligatoires : identité + adresse) ──
+    nom_bailleur = f"{bailleur.first_name} {bailleur.last_name}".strip()
+    exiger(not nom_bailleur, 'nom_bailleur', "Nom complet du bailleur", 'bailleur')
+    exiger(not (bailleur.adresse or '').strip(), 'adresse_bailleur', "Adresse du bailleur", 'bailleur')
+    exiger(not (bailleur.telephone or '').strip(), 'telephone_bailleur', "Téléphone du bailleur", 'bailleur')
+
+    # ── Locataire (identité + désignation du logement + conditions) ──
+    exiger(not (locataire.prenom or '').strip(), 'prenom', "Prénom du locataire", 'locataire')
+    exiger(not (locataire.nom or '').strip(), 'nom', "Nom du locataire", 'locataire')
+    exiger(not (locataire.telephone or '').strip(), 'telephone', "Téléphone du locataire", 'locataire')
+
+    logement = (locataire.adresse_logement or locataire.logement
+                or (str(locataire.unite) if locataire.unite else ''))
+    exiger(not str(logement).strip(), 'adresse_logement', "Adresse du logement loué", 'locataire')
+
+    exiger(not locataire.montant_loyer or locataire.montant_loyer <= 0,
+           'montant_loyer', "Montant du loyer", 'locataire')
+    exiger(not locataire.jour_echeance, 'jour_echeance', "Jour d'échéance du loyer", 'locataire')
+    exiger(not locataire.date_entree, 'date_entree', "Date d'entrée dans le logement", 'locataire')
+    exiger(not locataire.duree_bail_mois or locataire.duree_bail_mois <= 0,
+           'duree_bail_mois', "Durée du bail (en mois)", 'locataire')
+    exiger(not (locataire.frequence_paiement or '').strip(),
+           'frequence_paiement', "Périodicité de paiement", 'locataire')
+    exiger(not (locataire.type_piece_identite or '').strip(),
+           'type_piece_identite', "Type de pièce d'identité du locataire", 'locataire')
+    exiger(not (locataire.numero_piece_identite or '').strip(),
+           'numero_piece_identite', "Numéro de pièce d'identité du locataire", 'locataire')
+
+    return manquants
+
+
 def _fmt(v):
     try:
         return f"{v:,.0f}".replace(",", " ")

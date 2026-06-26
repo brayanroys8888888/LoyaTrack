@@ -22,6 +22,18 @@ class _DetailPaiementScreenState extends State<DetailPaiementScreen>
 
   Paiement get p => widget.paiement;
 
+  String _typeLabel(AppLocalizations t) => switch (p.typePaiement) {
+        'partiel' => t.typePartial,
+        'avance' => t.typeAdvance,
+        _ => t.typeComplete,
+      };
+
+  Color _typeColor() => switch (p.typePaiement) {
+        'partiel' => AppColors.warning,
+        'avance' => AppColors.blue,
+        _ => AppColors.success,
+      };
+
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
@@ -131,7 +143,9 @@ class _DetailPaiementScreenState extends State<DetailPaiementScreen>
                       child: Column(children: [
                         _DetailRow(
                             t.reference,
-                            '#PAY-${p.id.toUpperCase().padLeft(6, '0')}',
+                            p.reference.isNotEmpty
+                                ? p.reference
+                                : '#PAY-${p.id.toUpperCase().padLeft(6, '0')}',
                             Icons.tag_rounded,
                             context),
                         _Divider(context),
@@ -145,53 +159,42 @@ class _DetailPaiementScreenState extends State<DetailPaiementScreen>
                             p.mode.icon, context,
                             valueColor: p.mode.color),
                         _Divider(context),
+                        // Type réel : complet / partiel / avance
+                        _DetailRow(t.paymentType, _typeLabel(t),
+                            Icons.category_outlined, context,
+                            valueColor: _typeColor()),
+                        // Période réellement couverte par le paiement
+                        if (p.periodeDebut != null && p.periodeFin != null) ...[
+                          _Divider(context),
+                          _DetailRow(
+                              t.coveredPeriod,
+                              '${formatDate(p.periodeDebut!)} → ${formatDate(p.periodeFin!)}',
+                              Icons.event_repeat_outlined,
+                              context),
+                        ],
+                        if (p.nbMois > 1) ...[
+                          _Divider(context),
+                          _DetailRow(t.monthsCount, '${p.nbMois}',
+                              Icons.calendar_view_month_outlined, context),
+                        ],
+                        _Divider(context),
                         _DetailRow(
                             t.amountLabel,
                             '${formatMontant(p.montant)} FCFA',
                             Icons.payments_rounded,
                             context,
                             valueColor: AppColors.success),
-                        if (p.remarque != null && p.remarque!.isNotEmpty) ...[
+                        // Reste dû réel (paiement partiel)
+                        if (p.resteDu > 0) ...[
                           _Divider(context),
-                          _DetailRow(t.remark, p.remarque!, Icons.notes_rounded,
-                              context),
+                          _DetailRow(
+                              t.amountDue,
+                              '${formatMontant(p.resteDu)} FCFA',
+                              Icons.account_balance_wallet_outlined,
+                              context,
+                              valueColor: AppColors.danger),
                         ],
                       ]),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // ── Statut timeline ───────────────────────────
-                    AppCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(t.statusHistory,
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 14,
-                                  color: context.cText)),
-                          const SizedBox(height: 14),
-                          _TimelineItem(
-                            icon: Icons.pending_rounded,
-                            color: AppColors.warning,
-                            title: t.statusPending,
-                            subtitle: t.statusPendingSub,
-                            date: formatDate(p.datePaiement
-                                .subtract(const Duration(hours: 2))),
-                            isFirst: true,
-                            context: context,
-                          ),
-                          _TimelineItem(
-                            icon: Icons.verified_rounded,
-                            color: AppColors.success,
-                            title: t.statusValidated,
-                            subtitle: t.statusValidatedSub,
-                            date: formatDate(p.datePaiement),
-                            isLast: true,
-                            context: context,
-                          ),
-                        ],
-                      ),
                     ),
                     const SizedBox(height: 24),
 
@@ -524,72 +527,6 @@ Widget _DetailRow(
 
 Widget _Divider(BuildContext context) =>
     Divider(height: 1, color: context.cBorder, indent: 44);
-
-class _TimelineItem extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final String title, subtitle, date;
-  final bool isFirst, isLast;
-  final BuildContext context;
-
-  const _TimelineItem({
-    required this.icon,
-    required this.color,
-    required this.title,
-    required this.subtitle,
-    required this.date,
-    required this.context,
-    this.isFirst = false,
-    this.isLast = false,
-  });
-
-  @override
-  Widget build(BuildContext ctx) => Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 36,
-            child: Column(children: [
-              if (!isFirst)
-                Container(width: 2, height: 10, color: context.cBorder),
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, color: color, size: 16),
-              ),
-              if (!isLast)
-                Container(width: 2, height: 28, color: context.cBorder),
-            ]),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 4, bottom: 12),
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title,
-                        style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13,
-                            color: context.cText)),
-                    const SizedBox(height: 2),
-                    Text(subtitle,
-                        style:
-                            TextStyle(fontSize: 12, color: context.cTextSub)),
-                    const SizedBox(height: 3),
-                    Text(date,
-                        style: TextStyle(fontSize: 11, color: context.cHint)),
-                  ]),
-            ),
-          ),
-        ],
-      );
-}
 
 class _DownloadSuccess extends StatelessWidget {
   final BuildContext context;

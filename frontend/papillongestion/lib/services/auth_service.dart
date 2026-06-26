@@ -152,6 +152,18 @@ class AuthService {
     }
   }
 
+  /// Met à jour le profil du bailleur (PATCH /auth/me/) : nom, prénom,
+  /// téléphone, email. Renvoie le profil à jour ou null en cas d'échec.
+  Future<Map<String, dynamic>?> updateProfile(Map<String, dynamic> changes) async {
+    try {
+      final r = await _dio.patch('auth/me/', data: changes);
+      return r.statusCode == 200 ? r.data as Map<String, dynamic> : null;
+    } catch (e) {
+      print('Erreur updateProfile: $e');
+      return null;
+    }
+  }
+
   Future<void> logout() async {
     await _storage.delete(key: 'access_token');
     await _storage.delete(key: 'refresh_token');

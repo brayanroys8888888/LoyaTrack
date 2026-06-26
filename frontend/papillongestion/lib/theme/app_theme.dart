@@ -41,22 +41,43 @@ class AppColors {
 }
 
 class ThemeProvider extends ChangeNotifier {
-  bool _isDark = false;
-  bool get isDark => _isDark;
+  // Par défaut : on suit le thème du système (clair/sombre selon le téléphone).
+  ThemeMode _mode = ThemeMode.system;
+  ThemeMode get themeMode => _mode;
+
+  /// Vrai uniquement si l'utilisateur a explicitement forcé le mode sombre.
+  /// (Pour le mode « système », l'état réel est résolu par MaterialApp.)
+  bool get isDark => _mode == ThemeMode.dark;
 
   ThemeProvider() { _load(); }
 
   void _load() async {
     final p = await SharedPreferences.getInstance();
-    _isDark = p.getBool('dark_mode') ?? false;
+    final s = p.getString('theme_mode');
+    if (s == 'light') {
+      _mode = ThemeMode.light;
+    } else if (s == 'dark') {
+      _mode = ThemeMode.dark;
+    } else if (s == null && p.containsKey('dark_mode')) {
+      // Migration depuis l'ancien réglage booléen 'dark_mode'.
+      _mode = (p.getBool('dark_mode') ?? false) ? ThemeMode.dark : ThemeMode.light;
+    } else {
+      _mode = ThemeMode.system;
+    }
     notifyListeners();
   }
 
-  void toggle() async {
-    _isDark = !_isDark;
-    final p = await SharedPreferences.getInstance();
-    await p.setBool('dark_mode', _isDark);
+  Future<void> setMode(ThemeMode m) async {
+    _mode = m;
     notifyListeners();
+    final p = await SharedPreferences.getInstance();
+    await p.setString(
+        'theme_mode',
+        m == ThemeMode.light
+            ? 'light'
+            : m == ThemeMode.dark
+                ? 'dark'
+                : 'system');
   }
 }
 
@@ -99,7 +120,18 @@ class AppTheme {
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
         titleTextStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: Colors.white),
-        systemOverlayStyle: SystemUiOverlayStyle.light,
+        // L'AppBar est bleue → icônes de statut claires, MAIS la barre de
+        // navigation (téléphones à 3 boutons) doit suivre le fond du thème.
+        // SystemUiOverlayStyle.light forçait un fond noir : on le remplace.
+        systemOverlayStyle: SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light,
+          statusBarBrightness: Brightness.dark,
+          systemNavigationBarColor: bg,
+          systemNavigationBarDividerColor: bg,
+          systemNavigationBarIconBrightness:
+              isDark ? Brightness.light : Brightness.dark,
+        ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(

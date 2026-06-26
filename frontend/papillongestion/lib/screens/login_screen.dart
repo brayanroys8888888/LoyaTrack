@@ -62,58 +62,27 @@ class _LoginScreenState extends State<LoginScreen> {
     final t = AppLocalizations.of(context);
     return Scaffold(
       backgroundColor: dark ? AppColors.bgDark : Colors.white,
-      body: Column(children: [
-        // ── Header wave ────────────────────────────────────────────
-        ClipPath(
-          clipper: WaveClipper(),
-          child: Container(
-            height: 240,
-            width: double.infinity,
-            decoration: const BoxDecoration(gradient: kGradient),
-            padding: EdgeInsets.only(
-                top: MediaQuery.of(context).padding.top + 16,
-                left: 24,
-                bottom: 48),
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Row(children: [
-                    Container(
-                      width: 36, height: 36,
-                      decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(10)),
-                      child: const Padding(
-                          padding: EdgeInsets.all(6),
-                          child: PapillonLogo(size: 24)),
-                    ),
-                    const SizedBox(width: 10),
-                    const Text('Papillon Gestion',
-                        style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600)),
-                  ]),
-                  const SizedBox(height: 14),
-                  Text(t.loginTitle,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 28,
-                          color: Colors.white)),
-                  const SizedBox(height: 4),
-                  Text(t.loginWelcome,
-                      style: const TextStyle(fontSize: 13, color: Colors.white70)),
-                ]),
-          ),
-        ),
-        // ── Form ───────────────────────────────────────────────────
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+      // L'écran entier défile : quand le clavier apparaît, l'en-tête remonte
+      // au lieu de bloquer les champs (plus de bande bleue fixe qui gêne).
+      body: SafeArea(
+        child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 12),
+                const _AuthBrand(),
+                const SizedBox(height: 28),
+                Text(t.loginTitle,
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 26,
+                        color: context.cText)),
+                const SizedBox(height: 6),
+                Text(t.loginWelcome,
+                    style: TextStyle(fontSize: 14, color: context.cTextSub)),
+                const SizedBox(height: 28),
                   _Label(t.phoneOrEmail, context),
                   const SizedBox(height: 8),
                   _Field(ctrl: _email, hint: t.phoneOrEmail,
@@ -205,9 +174,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                 ]),
-          ),
         ),
-      ]),
+      ),
     );
   }
 }
@@ -296,52 +264,40 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final t = AppLocalizations.of(context);
     return Scaffold(
       backgroundColor: dark ? AppColors.bgDark : Colors.white,
-      body: Column(children: [
-        ClipPath(
-          clipper: WaveClipper(),
-          child: Container(
-            height: 185,
-            width: double.infinity,
-            decoration: const BoxDecoration(gradient: kGradient),
-            padding: EdgeInsets.only(
-                top: MediaQuery.of(context).padding.top + 10,
-                left: 24,
-                bottom: 40),
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                        width: 34,
-                        height: 34,
-                        decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(10)),
-                        child: const Icon(
-                            Icons.arrow_back_ios_new_rounded,
-                            color: Colors.white,
-                            size: 15)),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(t.createAccount,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 24,
-                          color: Colors.white)),
-                  Text(t.registerSubtitle,
-                      style:
-                          const TextStyle(fontSize: 13, color: Colors.white70)),
-                ]),
-          ),
-        ),
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+      body: SafeArea(
+        child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      child: Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                              color: context.cSurface,
+                              borderRadius: BorderRadius.circular(11)),
+                          child: Icon(Icons.arrow_back_ios_new_rounded,
+                              color: context.cText, size: 15)),
+                    ),
+                    const _AuthBrand(compact: true),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                Text(t.createAccount,
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 26,
+                        color: context.cText)),
+                const SizedBox(height: 6),
+                Text(t.registerSubtitle,
+                    style: TextStyle(fontSize: 14, color: context.cTextSub)),
+                const SizedBox(height: 24),
                   _Label(t.fullName, context),
                   const SizedBox(height: 8),
                   _Field(ctrl: _nom, hint: 'Jean Dupont',
@@ -450,14 +406,52 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                   ),
                 ]),
-          ),
         ),
-      ]),
+      ),
     );
   }
 }
 
 // ─── Widgets helpers ──────────────────────────────────────────────────────────
+
+/// Marque LoyaTrack : badge dégradé avec le logo + le nom. `compact` réduit la
+/// taille (utilisé dans la barre supérieure de l'inscription).
+class _AuthBrand extends StatelessWidget {
+  final bool compact;
+  const _AuthBrand({this.compact = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = compact ? 38.0 : 48.0;
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Container(
+        width: s,
+        height: s,
+        padding: EdgeInsets.all(compact ? 7 : 9),
+        decoration: BoxDecoration(
+          gradient: kGradient,
+          borderRadius: BorderRadius.circular(compact ? 11 : 14),
+          boxShadow: [
+            BoxShadow(
+                color: AppColors.blue.withOpacity(0.30),
+                blurRadius: 14,
+                offset: const Offset(0, 6)),
+          ],
+        ),
+        child: Image.asset('assets/images/logo/loyatrack_logo.png',
+            fit: BoxFit.contain),
+      ),
+      const SizedBox(width: 10),
+      Text('LoyaTrack',
+          style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: compact ? 16 : 20,
+              color: context.cText,
+              letterSpacing: -0.5)),
+    ]);
+  }
+}
+
 Widget _Label(String text, BuildContext context) => Text(
       text.toUpperCase(),
       style: TextStyle(

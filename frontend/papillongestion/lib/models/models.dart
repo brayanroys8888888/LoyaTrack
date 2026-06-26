@@ -92,6 +92,13 @@ class Locataire {
   final double chargesMensuelles;
   final int dureeBailMois;
   final String frequencePaiement; // mensuel | trimestriel | semestriel | annuel
+  // Infos personnelles / identité (documents légaux)
+  final String profession;
+  final double? revenusMensuels;
+  final String typePieceIdentite; // CNI | Passeport | Permis | ''
+  final String numeroPieceIdentite;
+  /// Pièces d'identité jointes (recto/verso/PDF). Chaque entrée : {id, url, libelle}.
+  final List<Map<String, dynamic>> piecesIdentite;
 
   const Locataire({
     required this.id, required this.nom, required this.telephone,
@@ -101,6 +108,9 @@ class Locataire {
     this.modeTest = false, this.languePreferee = 'fr',
     this.adresseLogement = '', this.chargesMensuelles = 0,
     this.dureeBailMois = 12, this.frequencePaiement = 'mensuel',
+    this.profession = '', this.revenusMensuels,
+    this.typePieceIdentite = '', this.numeroPieceIdentite = '',
+    this.piecesIdentite = const [],
   });
 
   factory Locataire.fromJson(Map<String, dynamic> json) {
@@ -126,6 +136,14 @@ class Locataire {
       chargesMensuelles: double.tryParse(json['charges_mensuelles']?.toString() ?? '0') ?? 0,
       dureeBailMois: int.tryParse(json['duree_bail_mois']?.toString() ?? '12') ?? 12,
       frequencePaiement: json['frequence_paiement']?.toString() ?? 'mensuel',
+      profession: json['profession']?.toString() ?? '',
+      revenusMensuels: double.tryParse(json['revenus_mensuels']?.toString() ?? ''),
+      typePieceIdentite: json['type_piece_identite']?.toString() ?? '',
+      numeroPieceIdentite: json['numero_piece_identite']?.toString() ?? '',
+      piecesIdentite: (json['pieces_identite'] as List?)
+              ?.map((e) => Map<String, dynamic>.from(e as Map))
+              .toList() ??
+          const [],
     );
   }
 
@@ -160,36 +178,55 @@ class Paiement {
   final DateTime datePaiement;
   final ModePaiement mode;
   final String? remarque;
+  // Données réelles renvoyées par appliquer_paiement() côté serveur
+  final String reference;
+  final String typePaiement; // complet | partiel | avance
+  final double resteDu;
+  final int nbMois;
+  final DateTime? periodeDebut;
+  final DateTime? periodeFin;
 
   const Paiement({
     required this.id, required this.locataireId, required this.nomLocataire,
     required this.logement, required this.montant, required this.datePaiement,
     required this.moisConcerne, required this.mode, this.remarque,
+    this.reference = '', this.typePaiement = 'complet', this.resteDu = 0,
+    this.nbMois = 1, this.periodeDebut, this.periodeFin,
   });
 
   factory Paiement.fromJson(Map<String, dynamic> json) {
     final prenom = json['locataire_prenom'] ?? '';
     final nom = json['locataire_nom'] ?? '';
     final nomComplet = '$prenom $nom'.trim();
-    
-    final dateP = json['date_paiement'] != null 
-        ? DateTime.parse(json['date_paiement']) 
+
+    final dateP = json['date_paiement'] != null
+        ? DateTime.parse(json['date_paiement'])
         : DateTime.now();
 
     // Convertir la date en mois (ex: "Mai 2025")
     const months = ['Jan.', 'Fév.', 'Mars', 'Avr.', 'Mai', 'Juin', 'Juil.', 'Août', 'Sept.', 'Oct.', 'Nov.', 'Déc.'];
     final monthStr = '${months[dateP.month - 1]} ${dateP.year}';
 
+    DateTime? parseDate(dynamic v) =>
+        (v != null && v.toString().isNotEmpty) ? DateTime.tryParse(v.toString()) : null;
+    final logementReel = (json['locataire_logement'] ?? '').toString().trim();
+
     return Paiement(
       id: json['id']?.toString() ?? '',
       locataireId: json['locataire']?.toString() ?? '',
       nomLocataire: nomComplet.isNotEmpty ? nomComplet : 'Inconnu',
-      logement: 'Non assigné', // Le backend de paiement n'a pas cette info
+      logement: logementReel.isNotEmpty ? logementReel : 'Non assigné',
       montant: double.tryParse(json['montant']?.toString() ?? '0') ?? 0,
       datePaiement: dateP,
       moisConcerne: monthStr,
       mode: modePaiementFromString(json['mode_paiement'] ?? 'Espèces'),
-      remarque: json['reference'],
+      remarque: null,
+      reference: json['reference']?.toString() ?? '',
+      typePaiement: json['statut']?.toString() ?? 'complet',
+      resteDu: double.tryParse(json['reste_du']?.toString() ?? '0') ?? 0,
+      nbMois: int.tryParse(json['nb_mois']?.toString() ?? '1') ?? 1,
+      periodeDebut: parseDate(json['periode_debut']),
+      periodeFin: parseDate(json['periode_fin']),
     );
   }
 

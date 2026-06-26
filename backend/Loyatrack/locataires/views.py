@@ -11,11 +11,12 @@ import threading
 from .serializers import (
     LocataireSerializer, LocataireStatutSerializer, RappelSerializer, NotificationSerializer,
     HistoriqueLoyerSerializer, MouvementCautionSerializer, EtatDesLieuxSerializer,
-    PhotoEtatDesLieuxSerializer,
+    PhotoEtatDesLieuxSerializer, PieceIdentiteFichierSerializer,
 )
 from .models import (
     Locataire, Rappel, Notification,
     HistoriqueLoyer, MouvementCaution, EtatDesLieux, PhotoEtatDesLieux,
+    PieceIdentiteFichier,
 )
 from .services import execute_rappel
 from .tasks import verifier_echeances
@@ -228,12 +229,51 @@ class LocataireViewSet(viewsets.ModelViewSet):
         res = importer_locataires(request.user, fichier.read(), fichier.name, dry_run=dry_run)
         return Response(res, status=200)
 
+    # ----- Pièces d'identité multiples (recto/verso/PDF) -----
+    @action(detail=True, methods=['post'], url_path='ajouter_piece',
+            parser_classes=[MultiPartParser, FormParser])
+    def ajouter_piece(self, request, pk=None):
+        locataire = self.get_object()
+        fichier = request.FILES.get('fichier')
+        if not fichier:
+            return Response({'error': "Aucun fichier fourni (champ 'fichier')"}, status=400)
+        piece = PieceIdentiteFichier.objects.create(
+            locataire=locataire, fichier=fichier,
+            libelle=(request.data.get('libelle') or '')[:50],
+        )
+        return Response(
+            PieceIdentiteFichierSerializer(piece, context={'request': request}).data,
+            status=201,
+        )
+
+    @action(detail=True, methods=['delete'], url_path=r'pieces/(?P<piece_id>[^/.]+)')
+    def supprimer_piece(self, request, pk=None, piece_id=None):
+        locataire = self.get_object()
+        PieceIdentiteFichier.objects.filter(locataire=locataire, id=piece_id).delete()
+        return Response(status=204)
+
     # ----- Contrat de bail PDF (2.2) -----
     @action(detail=True, methods=['get'])
     def contrat(self, request, pk=None):
         exiger_pro(request.user, 'documents_legaux')
         locataire = self.get_object()
-        from documents.services import generer_contrat_pdf
+        from documents.services import generer_contrat_pdf, champs_manquants_contrat
+
+        # Conformité loi n°2014/023 : on REFUSE de générer un document tant que
+        # des mentions obligatoires manquent. On renvoie la liste + la cible
+        # pour que l'app redirige vers le bon écran (locataire et/ou réglages).
+        manquants = champs_manquants_contrat(locataire)
+        if manquants:
+            cibles = {m['cible'] for m in manquants}
+            cible = 'les_deux' if len(cibles) > 1 else next(iter(cibles))
+            return Response({
+                'code': 'donnees_incompletes',
+                'message': "Informations obligatoires manquantes pour générer le contrat de bail.",
+                'champs': [m['libelle'] for m in manquants],
+                'details': manquants,
+                'cible': cible,
+            }, status=422)
+
         pdf = generer_contrat_pdf(locataire)
         response = HttpResponse(pdf, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="contrat_{locataire.id}.pdf"'

@@ -2,9 +2,21 @@ from rest_framework import serializers
 from .models import (
     Locataire, Rappel, Notification,
     HistoriqueLoyer, MouvementCaution, EtatDesLieux, PhotoEtatDesLieux,
+    PieceIdentiteFichier,
 )
 
+
+class PieceIdentiteFichierSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PieceIdentiteFichier
+        fields = ('id', 'fichier', 'libelle', 'date_ajout')
+        read_only_fields = ('date_ajout',)
+
+
 class LocataireSerializer(serializers.ModelSerializer):
+    # Relation inverse non incluse par `__all__` : on la déclare explicitement.
+    pieces_identite = PieceIdentiteFichierSerializer(many=True, read_only=True)
+
     class Meta:
         model = Locataire
         fields = '__all__'

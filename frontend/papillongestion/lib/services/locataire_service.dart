@@ -1,6 +1,17 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import '../core/api_client.dart';
 import '../models/models.dart';
+
+/// Levée quand le backend refuse de générer un document légal parce que des
+/// informations obligatoires manquent (loi n°2014/023). [champs] = libellés
+/// manquants ; [cible] = 'bailleur' | 'locataire' | 'les_deux'.
+class DonneesIncompletesException implements Exception {
+  final List<String> champs;
+  final String cible;
+  final String message;
+  DonneesIncompletesException(this.champs, this.cible, this.message);
+}
 
 // Convertit l'enum Flutter vers la chaîne attendue par le backend Django
 String _statutToBackend(StatutLocataire statut) {
@@ -115,6 +126,10 @@ class LocataireService {
     double? chargesMensuelles,
     int? dureeBailMois,
     String? frequencePaiement,
+    String? profession,
+    double? revenusMensuels,
+    String? typePieceIdentite,
+    String? numeroPieceIdentite,
   }) async {
     try {
       final response = await _dio.patch('locataires/$id/', data: {
@@ -134,6 +149,10 @@ class LocataireService {
         if (penaliteJournaliere != null) 'penalite_journaliere': penaliteJournaliere,
         if (signatureBase64 != null) 'signature_base64': signatureBase64,
         if (languePreferee != null) 'langue_preferee': languePreferee,
+        if (profession != null) 'profession': profession,
+        if (revenusMensuels != null) 'revenus_mensuels': revenusMensuels,
+        if (typePieceIdentite != null && typePieceIdentite.isNotEmpty) 'type_piece_identite': typePieceIdentite,
+        if (numeroPieceIdentite != null) 'numero_piece_identite': numeroPieceIdentite,
         'notes': notes ?? '',
       });
       return response.statusCode == 200;
@@ -217,6 +236,34 @@ class LocataireService {
     } catch (e) { print('Erreur uploadPieceIdentite: $e'); return false; }
   }
 
+  /// Ajoute une pièce d'identité (recto/verso/PDF) — plusieurs par locataire.
+  /// Renvoie l'entrée créée ({id, fichier, libelle}) ou null.
+  Future<Map<String, dynamic>?> ajouterPieceIdentite(String id, String filePath,
+      {String libelle = ''}) async {
+    try {
+      final form = FormData.fromMap({
+        'fichier': await MultipartFile.fromFile(filePath),
+        if (libelle.isNotEmpty) 'libelle': libelle,
+      });
+      final r = await _dio.post('locataires/$id/ajouter_piece/', data: form);
+      return r.statusCode == 201 ? r.data as Map<String, dynamic> : null;
+    } catch (e) {
+      print('Erreur ajouterPieceIdentite: $e');
+      return null;
+    }
+  }
+
+  /// Supprime une pièce d'identité jointe.
+  Future<bool> supprimerPieceIdentite(String locataireId, dynamic pieceId) async {
+    try {
+      final r = await _dio.delete('locataires/$locataireId/pieces/$pieceId/');
+      return r.statusCode == 204;
+    } catch (e) {
+      print('Erreur supprimerPieceIdentite: $e');
+      return false;
+    }
+  }
+
   /// Import en masse depuis un fichier CSV/Excel (POST multipart) — module 2.4.
   Future<Map<String, dynamic>?> importLocataires(String filePath, String fileName) async {
     try {
@@ -292,17 +339,51 @@ class LocataireService {
   }
 
   /// Télécharge le contrat de bail (PDF) du locataire sous forme d'octets.
+  /// Lève [DonneesIncompletesException] si des mentions légales obligatoires
+  /// manquent (HTTP 422) — l'appelant affiche la liste et redirige.
   Future<List<int>?> getContratPdf(String locataireId) async {
     try {
       final response = await _dio.get(
         'locataires/$locataireId/contrat/',
-        options: Options(responseType: ResponseType.bytes),
+        options: Options(
+          responseType: ResponseType.bytes,
+          // 422 = données incomplètes : on le traite ici sans le laisser
+          // remonter comme erreur (403/401 continuent de passer par les hooks).
+          validateStatus: (s) => s == 200 || s == 422,
+        ),
       );
-      return response.statusCode == 200 ? response.data as List<int> : null;
+      if (response.statusCode == 200) return response.data as List<int>;
+      if (response.statusCode == 422) {
+        final body = _jsonFromBytes(response.data);
+        if (body != null && body['code'] == 'donnees_incompletes') {
+          throw DonneesIncompletesException(
+            ((body['champs'] as List?) ?? const [])
+                .map((e) => e.toString())
+                .toList(),
+            body['cible']?.toString() ?? 'locataire',
+            body['message']?.toString() ?? '',
+          );
+        }
+      }
+      return null;
+    } on DonneesIncompletesException {
+      rethrow;
     } catch (e) {
       print('Erreur getContratPdf: $e');
       return null;
     }
+  }
+
+  /// Décode un corps de réponse renvoyé en octets (responseType.bytes) en JSON.
+  Map<String, dynamic>? _jsonFromBytes(dynamic data) {
+    try {
+      if (data is List<int>) {
+        return jsonDecode(utf8.decode(data)) as Map<String, dynamic>;
+      }
+      if (data is String) return jsonDecode(data) as Map<String, dynamic>;
+      if (data is Map) return Map<String, dynamic>.from(data);
+    } catch (_) {}
+    return null;
   }
 
   Future<Map<String, dynamic>?> demarrerTest(String locataireId) async {

@@ -8,6 +8,7 @@ import '../widgets/shared_widgets.dart';
 import '../widgets/pro_gate.dart';
 import 'add_locataire_screen.dart';
 import 'add_paiement_screen.dart';
+import 'bailleur_info_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/paiement_service.dart';
 import '../services/locataire_service.dart';
@@ -148,6 +149,7 @@ class _DetailLocataireScreenState extends State<DetailLocataireScreen>
   /// appelle l'action backend puis referme la fiche (true) pour rafraîchir la liste.
   Future<void> _choisirStatut(BuildContext context) async {
     final t = AppLocalizations.of(context);
+    FocusManager.instance.primaryFocus?.unfocus();
     final choix = await showFormSheet<StatutLocataire>(context, builder: (ctx) => Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -555,18 +557,29 @@ class _DetailsTab extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 16),
+          // Échéance & jours restants (infos utiles au bailleur)
+          _echeanceCard(context, t),
+          const SizedBox(height: 16),
           // Info List
           _GlassCard(
             padding: EdgeInsets.zero,
             child: Column(children: [
               _infoRow(context, Icons.phone_outlined, t.phone, loc.telephone),
               _div(context),
+              _infoRow(context, Icons.payments_outlined, t.rentFcfa, '${formatMontant(loc.montantLoyer)} F'),
+              _div(context),
+              _infoRow(context, Icons.event_outlined, t.dueDayField, t.dayOfMonth(loc.jourEcheance)),
+              _div(context),
               _infoRow(context, Icons.calendar_today_outlined, t.entryDate, formatDate(loc.dateEntree)),
               _div(context),
               _infoRow(context, Icons.home_outlined, t.housing, loc.logement),
+              if (loc.adresseLogement.isNotEmpty) ...[
+                _div(context),
+                _infoRow(context, Icons.location_on_outlined, t.addressHousing, loc.adresseLogement),
+              ],
               _div(context),
               _infoRow(context, Icons.money_off_csred_outlined, t.penaltyPerDay, '${formatMontant(loc.penaliteJournaliere)} F'),
-              if (loc.notes != null) ...[
+              if (loc.notes != null && loc.notes!.isNotEmpty) ...[
                 _div(context),
                 _infoRow(context, Icons.notes_rounded, t.notes, loc.notes!, isLast: true),
               ],
@@ -592,9 +605,15 @@ class _DetailsTab extends StatelessWidget {
                 if (!exigerFonction(context, 'documents_legaux')) return;
                 final messenger = ScaffoldMessenger.of(context);
                 messenger.showSnackBar(SnackBar(content: Text(t.generatingContract)));
-                final bytes = await LocataireService().getContratPdf(loc.id);
-                if (!context.mounted) return;
-                await ouvrirPdf(context, bytes, 'contrat_${loc.id}.pdf');
+                try {
+                  final bytes = await LocataireService().getContratPdf(loc.id);
+                  if (!context.mounted) return;
+                  await ouvrirPdf(context, bytes, 'contrat_${loc.id}.pdf');
+                } on DonneesIncompletesException catch (e) {
+                  if (!context.mounted) return;
+                  messenger.hideCurrentSnackBar();
+                  await _afficherDonneesManquantes(context, e);
+                }
               },
               icon: const Icon(Icons.description_outlined, size: 18),
               label: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -715,6 +734,135 @@ class _DetailsTab extends StatelessWidget {
           child: Icon(icon, color: color, size: 20),
         ),
       );
+
+  /// Carte « Prochaine échéance » : date + pastille (jours restants / retard).
+  Widget _echeanceCard(BuildContext context, AppLocalizations t) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    int dim(int y, int m) => DateTime(y, m + 1, 0).day;
+    final jour = loc.jourEcheance.clamp(1, dim(now.year, now.month));
+    final echeanceMois = DateTime(now.year, now.month, jour);
+
+    DateTime echeance;
+    int diff;
+    bool enRetard;
+    if (!today.isAfter(echeanceMois)) {
+      echeance = echeanceMois;
+      diff = echeanceMois.difference(today).inDays;
+      enRetard = false;
+    } else if (loc.statut == StatutLocataire.paye) {
+      final ny = now.month == 12 ? now.year + 1 : now.year;
+      final nm = now.month == 12 ? 1 : now.month + 1;
+      echeance = DateTime(ny, nm, loc.jourEcheance.clamp(1, dim(ny, nm)));
+      diff = echeance.difference(today).inDays;
+      enRetard = false;
+    } else {
+      echeance = echeanceMois;
+      diff = today.difference(echeanceMois).inDays;
+      enRetard = true;
+    }
+
+    final Color couleur;
+    final String pastille;
+    if (enRetard) {
+      couleur = AppColors.danger;
+      pastille = t.lateByDays(diff);
+    } else if (diff == 0) {
+      couleur = AppColors.warning;
+      pastille = t.dueToday;
+    } else {
+      couleur = AppColors.success;
+      pastille = t.dueInDays(diff);
+    }
+
+    return _GlassCard(
+      child: Row(children: [
+        Container(
+          width: 40, height: 40,
+          decoration: BoxDecoration(color: couleur.withOpacity(0.12), borderRadius: BorderRadius.circular(12)),
+          child: Icon(Icons.event_available_outlined, color: couleur, size: 20),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(t.nextDueDate.toUpperCase(),
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: context.cTextSub, letterSpacing: 0.8)),
+            const SizedBox(height: 2),
+            Text(formatDate(echeance),
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: context.cText)),
+          ]),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(color: couleur.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
+          child: Text(pastille, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: couleur)),
+        ),
+      ]),
+    );
+  }
+
+  /// Affiche la liste des informations légales manquantes (HTTP 422) et propose
+  /// de rediriger vers le bon écran (fiche locataire et/ou mes informations).
+  Future<void> _afficherDonneesManquantes(
+      BuildContext context, DonneesIncompletesException e) async {
+    final t = AppLocalizations.of(context);
+    final cible = e.cible; // 'bailleur' | 'locataire' | 'les_deux'
+    await showFormSheet<void>(context, builder: (ctx) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            sheetHeader(ctx, t.missingInfoTitle),
+            Row(children: [
+              const Icon(Icons.warning_amber_rounded, color: AppColors.warning, size: 20),
+              const SizedBox(width: 8),
+              Expanded(child: Text(t.missingInfoMessage,
+                  style: TextStyle(fontSize: 13, color: ctx.cTextSub))),
+            ]),
+            const SizedBox(height: 12),
+            ...e.champs.map((c) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(children: [
+                    const Icon(Icons.fiber_manual_record, size: 7, color: AppColors.danger),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text(c, style: TextStyle(fontSize: 14, color: ctx.cText))),
+                  ]),
+                )),
+            const SizedBox(height: 20),
+            if (cible == 'locataire' || cible == 'les_deux')
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    Navigator.push(context, slideRoute(AddLocataireScreen(locataire: loc)));
+                  },
+                  icon: const Icon(Icons.person_outline_rounded, size: 18),
+                  label: Text(t.completeTenant),
+                ),
+              ),
+            if (cible == 'les_deux') const SizedBox(height: 10),
+            if (cible == 'bailleur' || cible == 'les_deux')
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    Navigator.push(context, slideRoute(const BailleurInfoScreen()));
+                  },
+                  icon: const Icon(Icons.badge_outlined, size: 18),
+                  label: Text(t.completeMyInfo),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.blue,
+                    side: const BorderSide(color: AppColors.blue),
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ));
+  }
 
   Widget _sqBtn(BuildContext context, IconData icon, String label, Color color, [VoidCallback? onTap]) => Expanded(
         child: GestureDetector(

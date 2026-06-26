@@ -68,15 +68,44 @@ class PapillonApp extends StatelessWidget {
     final tp = Provider.of<ThemeProvider>(context);
     final lp = Provider.of<LocaleProvider>(context);
     return MaterialApp(
-      title: 'Papillon Gestion',
+      title: 'LoyaTrack',
       navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
-      themeMode: tp.isDark ? ThemeMode.dark : ThemeMode.light,
+      themeMode: tp.themeMode,
       locale: lp.locale,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
+      // Applique la couleur de la barre système (statut + navigation) en
+      // fonction du thème RÉSOLU (gère le mode « système »). Couvre aussi les
+      // écrans sans AppBar (splash, login). Les écrans à AppBar appliquent en
+      // plus leur propre style (icônes claires sur fond bleu).
+      builder: (context, child) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final navBar = isDark ? AppColors.bgDark : AppColors.bgLight;
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+            statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+            systemNavigationBarColor: navBar,
+            systemNavigationBarDividerColor: navBar,
+            systemNavigationBarIconBrightness:
+                isDark ? Brightness.light : Brightness.dark,
+          ),
+          // Taper en dehors d'un champ ferme le clavier (corrige le clavier qui
+          // « reste » ou réapparaît, notamment en ouvrant un bottom sheet sans
+          // champ). Ne capte que les zones non interactives (deferToChild).
+          child: GestureDetector(
+            onTap: () {
+              final f = FocusManager.instance.primaryFocus;
+              if (f != null && f.hasFocus) f.unfocus();
+            },
+            child: child ?? const SizedBox.shrink(),
+          ),
+        );
+      },
       home: const SplashScreen(),
     );
   }

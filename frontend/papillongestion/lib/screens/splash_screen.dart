@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../widgets/shared_widgets.dart';
 import 'login_screen.dart';
+import 'welcome_screen.dart';
 import '../main_shell.dart';
 import '../services/auth_service.dart';
 
@@ -33,14 +34,26 @@ class _SplashScreenState extends State<SplashScreen>
     // (au lieu de cumuler réseau + délai) → ouverture nettement plus rapide.
     final results = await Future.wait([
       AuthService().restaurerSession(),
+      WelcomeScreen.dejaVu(),
       Future.delayed(const Duration(milliseconds: 1200)),
     ]);
     final bool loggedIn = results[0] as bool;
+    final bool welcomeVu = results[1] as bool;
 
     if (!mounted) return;
-    
+
+    // Connecté → app. Sinon : 1er lancement → Welcome, après → Login.
+    Widget destination;
+    if (loggedIn) {
+      destination = const MainShell();
+    } else if (!welcomeVu) {
+      destination = const WelcomeScreen();
+    } else {
+      destination = const LoginScreen();
+    }
+
     Navigator.of(context).pushReplacement(PageRouteBuilder(
-      pageBuilder: (_, a, __) => loggedIn ? const MainShell() : const LoginScreen(),
+      pageBuilder: (_, a, __) => destination,
       transitionsBuilder: (_, a, __, child) =>
           FadeTransition(opacity: a, child: child),
       transitionDuration: const Duration(milliseconds: 500),
@@ -86,7 +99,7 @@ class _SplashScreenState extends State<SplashScreen>
                           ]),
                       padding: const EdgeInsets.all(14),
 
-                      child: Image.asset("assets/images/logo/logoLoya.png", fit: BoxFit.cover,),
+                      child: Image.asset("assets/images/logo/loyatrack_logo.png", fit: BoxFit.contain,),
                     ),
                     const SizedBox(height: 28),
                     const Text('LoyaTrack',

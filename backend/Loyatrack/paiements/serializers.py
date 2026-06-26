@@ -4,6 +4,7 @@ from .models import Paiement
 class PaiementSerializer(serializers.ModelSerializer):
     locataire_nom = serializers.SerializerMethodField()
     locataire_prenom = serializers.SerializerMethodField()
+    locataire_logement = serializers.SerializerMethodField()
 
     class Meta:
         model = Paiement
@@ -16,6 +17,10 @@ class PaiementSerializer(serializers.ModelSerializer):
 
     def get_locataire_prenom(self, obj):
         return obj.locataire.prenom
+
+    def get_locataire_logement(self, obj):
+        loc = obj.locataire
+        return loc.adresse_logement or loc.logement or (str(loc.unite) if loc.unite else '')
 
     def validate_locataire(self, value):
         if value.bailleur != self.context['request'].user:

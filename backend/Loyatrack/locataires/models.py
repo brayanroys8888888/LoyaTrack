@@ -96,6 +96,23 @@ class Locataire(models.Model):
         return self.bailleur.penalite_defaut
 
 
+class PieceIdentiteFichier(models.Model):
+    """Fichier de pièce d'identité (recto / verso / PDF). Plusieurs par locataire :
+    un document d'identité peut comporter plusieurs faces, ou être un seul PDF.
+    Le champ legacy ``Locataire.piece_identite`` reste pour compatibilité."""
+    locataire = models.ForeignKey(
+        Locataire, on_delete=models.CASCADE, related_name='pieces_identite')
+    fichier = models.FileField(upload_to='pieces_identite/')
+    libelle = models.CharField(max_length=50, blank=True)  # ex : Recto, Verso
+    date_ajout = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['date_ajout']
+
+    def __str__(self):
+        return f"Pièce {self.libelle or self.pk} - {self.locataire}"
+
+
 class Rappel(models.Model):
     TYPE_CHOICES = (
         ('SMS', 'SMS'),

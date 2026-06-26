@@ -8,6 +8,7 @@ import '../widgets/shared_widgets.dart';
 import 'login_screen.dart';
 import 'comptabilite_screen.dart';
 import 'change_password_screen.dart';
+import 'bailleur_info_screen.dart';
 import '../services/auth_service.dart';
 import '../services/parametres_service.dart';
 import '../services/dashboard_service.dart';
@@ -110,6 +111,7 @@ class _ReglagesScreenState extends State<ReglagesScreen> {
   }
 
   void _choisirCanal() {
+    FocusManager.instance.primaryFocus?.unfocus();
     showModalBottomSheet(
       context: context,
       backgroundColor: context.cCard,
@@ -245,6 +247,54 @@ class _ReglagesScreenState extends State<ReglagesScreen> {
     );
   }
 
+  IconData _themeIcon(ThemeMode m) => {
+        ThemeMode.system: Icons.brightness_auto_rounded,
+        ThemeMode.light: Icons.light_mode_rounded,
+        ThemeMode.dark: Icons.dark_mode_rounded,
+      }[m]!;
+
+  String _themeLabel(AppLocalizations t, ThemeMode m) => {
+        ThemeMode.system: t.themeSystem,
+        ThemeMode.light: t.themeLight,
+        ThemeMode.dark: t.themeDark,
+      }[m]!;
+
+  /// Sélecteur de thème : Système (défaut) / Clair / Sombre.
+  void _choisirTheme(ThemeProvider tp) {
+    FocusManager.instance.primaryFocus?.unfocus();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: context.cCard,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (_) {
+        final t = AppLocalizations.of(context);
+        final options = <List<Object>>[
+          [ThemeMode.system, t.themeSystem, Icons.brightness_auto_rounded],
+          [ThemeMode.light, t.themeLight, Icons.light_mode_rounded],
+          [ThemeMode.dark, t.themeDark, Icons.dark_mode_rounded],
+        ];
+        return SafeArea(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const SizedBox(height: 16),
+            Text(t.theme, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: context.cText)),
+            const SizedBox(height: 8),
+            for (final e in options)
+              ListTile(
+                leading: Icon(e[2] as IconData, color: AppColors.blue),
+                title: Text(e[1] as String, style: TextStyle(color: context.cText)),
+                trailing: tp.themeMode == e[0] ? const Icon(Icons.check_rounded, color: AppColors.success) : null,
+                onTap: () {
+                  tp.setMode(e[0] as ThemeMode);
+                  Navigator.pop(context);
+                },
+              ),
+            const SizedBox(height: 12),
+          ]),
+        );
+      },
+    );
+  }
+
   Future<void> _toggle2FA(bool v) async {
     setState(() => _deuxFaBusy = true);
     final res = await AuthService().toggle2FA(active: v);
@@ -292,6 +342,25 @@ class _ReglagesScreenState extends State<ReglagesScreen> {
                 // ── Mon compte ─────────────────────────────────────
                 _SLabel(t.settingsMyAccount, context),
                 _PCard(children: [
+                  _PRow(Icons.badge_outlined, context.cBlue3, AppColors.blue, t.myInfoTitle,
+                      t.myInfoSettingsSub, context, onTap: () async {
+                    await Navigator.push(context, slideRoute(const BailleurInfoScreen()));
+                    // Recharge l'adresse + le profil (header) après édition.
+                    final c = await _params.getParametres();
+                    if (c != null && mounted) setState(() => _adresseBailleur = c['adresse_bailleur']?.toString() ?? '');
+                    final p = await AuthService().getProfile();
+                    if (p != null && mounted) {
+                      setState(() {
+                        final prenom = (p['first_name'] ?? '').toString().trim();
+                        final nom = (p['last_name'] ?? '').toString().trim();
+                        _nom = '$prenom $nom'.trim();
+                        _contact = (p['email'] ?? '').toString().trim();
+                        if (_contact.isEmpty) _contact = (p['telephone'] ?? '').toString().trim();
+                        _initiales = _calculerInitiales(_nom, _contact);
+                      });
+                    }
+                  }),
+                  _Div(context),
                   _PRow(Icons.location_on_outlined, context.cBlue3, AppColors.blue, t.landlordAddress,
                       _adresseBailleur.isEmpty ? '—' : _adresseBailleur, context, onTap: _editerAdresse),
                   _Div(context),
@@ -324,18 +393,22 @@ class _ReglagesScreenState extends State<ReglagesScreen> {
                 // ── Apparence ──────────────────────────────────────
                 _SLabel(t.appearance, context),
                 _PCard(children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                    child: Row(children: [
-                      Container(width: 34, height: 34, decoration: BoxDecoration(color: context.isDark ? context.cBlue3 : const Color(0xFF1A1A2E).withOpacity(0.08), borderRadius: BorderRadius.circular(10)),
-                        child: Icon(context.isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded, color: context.isDark ? AppColors.blue : const Color(0xFF1A1A2E), size: 18)),
-                      const SizedBox(width: 12),
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(t.darkMode, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: context.cText)),
-                        Text(context.isDark ? t.darkModeOn : t.darkModeOff, style: TextStyle(fontSize: 11, color: context.cTextSub)),
-                      ])),
-                      AppToggle(value: themeProvider.isDark, onChanged: (_) => themeProvider.toggle()),
-                    ]),
+                  GestureDetector(
+                    onTap: () => _choisirTheme(themeProvider),
+                    behavior: HitTestBehavior.opaque,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                      child: Row(children: [
+                        Container(width: 34, height: 34, decoration: BoxDecoration(color: context.isDark ? context.cBlue3 : const Color(0xFF1A1A2E).withOpacity(0.08), borderRadius: BorderRadius.circular(10)),
+                          child: Icon(_themeIcon(themeProvider.themeMode), color: context.isDark ? AppColors.blue : const Color(0xFF1A1A2E), size: 18)),
+                        const SizedBox(width: 12),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(t.theme, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: context.cText)),
+                          Text(_themeLabel(t, themeProvider.themeMode), style: TextStyle(fontSize: 11, color: context.cTextSub)),
+                        ])),
+                        Icon(Icons.chevron_right_rounded, color: context.cBorder, size: 18),
+                      ]),
+                    ),
                   ),
                   _Div(context),
                   // Langue de l'application (FR / EN)
@@ -459,7 +532,7 @@ class _ReglagesScreenState extends State<ReglagesScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Center(child: Text('Papillon Gestion v1.0.0', style: TextStyle(fontSize: 12, color: context.cHint))),
+                Center(child: Text('LoyaTrack v1.0.0', style: TextStyle(fontSize: 12, color: context.cHint))),
               ]),
             ),
           ),
@@ -470,6 +543,7 @@ class _ReglagesScreenState extends State<ReglagesScreen> {
 
   void _confirmLogout(BuildContext context) {
     final t = AppLocalizations.of(context);
+    FocusManager.instance.primaryFocus?.unfocus();
     showModalBottomSheet(
       context: context,
       backgroundColor: context.cCard,

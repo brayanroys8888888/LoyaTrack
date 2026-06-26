@@ -1,7 +1,8 @@
 import 'dart:convert';
-import 'dart:ui' as import_ui;
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:signature/signature.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
@@ -33,8 +34,9 @@ class _AddLocataireScreenState extends State<AddLocataireScreen> {
   StatutLocataire _statut = StatutLocataire.nonPaye;
   DateTime? _dateEntree;
   String? _typePiece;
-  String? _piecePath;
-  String? _pieceName;
+  // Pièces d'identité : fichiers locaux à téléverser + fichiers déjà enregistrés.
+  final List<_PieceLocale> _piecesLocales = [];
+  List<Map<String, dynamic>> _piecesExistantes = [];
   String _langue = 'fr';
   String _frequence = 'mensuel';
   int? _uniteId; // unité de logement sélectionnée (relie au module biens)
@@ -58,9 +60,14 @@ class _AddLocataireScreenState extends State<AddLocataireScreen> {
     _jour     = TextEditingController(text: l?.jourEcheance.toString() ?? '5');
     _penalite = TextEditingController(text: l?.penaliteJournaliere.toInt().toString() ?? '3000');
     _notes    = TextEditingController(text: l?.notes ?? '');
-    _profession = TextEditingController();
-    _revenus    = TextEditingController();
-    _numPiece   = TextEditingController();
+    _profession = TextEditingController(text: l?.profession ?? '');
+    _revenus    = TextEditingController(
+        text: (l?.revenusMensuels != null && l!.revenusMensuels! > 0)
+            ? l.revenusMensuels!.toInt().toString()
+            : '');
+    _numPiece   = TextEditingController(text: l?.numeroPieceIdentite ?? '');
+    _typePiece  = (l?.typePieceIdentite.isNotEmpty ?? false) ? l!.typePieceIdentite : null;
+    _piecesExistantes = List<Map<String, dynamic>>.from(l?.piecesIdentite ?? const []);
     _adresseLogement = TextEditingController(text: l?.adresseLogement ?? '');
     _charges    = TextEditingController(text: (l != null && l.chargesMensuelles > 0) ? l.chargesMensuelles.toInt().toString() : '');
     _dureeBail  = TextEditingController(text: (l?.dureeBailMois ?? 12).toString());
@@ -227,10 +234,40 @@ class _AddLocataireScreenState extends State<AddLocataireScreen> {
     _ => t.idCard,
   };
 
+  // ── Validateurs (validation stricte des champs légaux) ──
+  String? _vRequis(String? v) =>
+      (v == null || v.trim().isEmpty) ? AppLocalizations.of(context).requiredField : null;
+
+  String? _vMontant(String? v) {
+    final t = AppLocalizations.of(context);
+    final s = (v ?? '').trim();
+    if (s.isEmpty) return t.requiredField;
+    final n = double.tryParse(s);
+    if (n == null || n <= 0) return t.invalidAmount;
+    return null;
+  }
+
+  String? _vJour(String? v) {
+    final t = AppLocalizations.of(context);
+    final s = (v ?? '').trim();
+    if (s.isEmpty) return t.requiredField;
+    final n = int.tryParse(s);
+    if (n == null || n < 1 || n > 31) return t.invalidDay;
+    return null;
+  }
+
+  String? _vDuree(String? v) {
+    final t = AppLocalizations.of(context);
+    final s = (v ?? '').trim();
+    if (s.isEmpty) return t.requiredField;
+    final n = int.tryParse(s);
+    if (n == null || n <= 0) return t.invalidDuration;
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
-    final safeTop = MediaQuery.paddingOf(context).top;
     return Scaffold(
       backgroundColor: context.bg,
       body: CustomScrollView(
@@ -262,11 +299,11 @@ class _AddLocataireScreenState extends State<AddLocataireScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _SectionTitle(t.personalInfo),
-                    _GlassInput(label: t.firstName, controller: _prenom, icon: Icons.person_outline_rounded, hint: 'Ex: Jean'),
+                    _GlassInput(label: t.firstName, controller: _prenom, icon: Icons.person_outline_rounded, hint: 'Ex: Jean', required: true, validator: _vRequis),
                     const SizedBox(height: 16),
-                    _GlassInput(label: t.lastName, controller: _nom, icon: Icons.badge_outlined, hint: 'Ex: Dupont'),
+                    _GlassInput(label: t.lastName, controller: _nom, icon: Icons.badge_outlined, hint: 'Ex: Dupont', required: true, validator: _vRequis),
                     const SizedBox(height: 16),
-                    _GlassInput(label: t.phone, controller: _tel, icon: Icons.phone_outlined, hint: '+237 ...', type: TextInputType.phone),
+                    _GlassInput(label: t.phone, controller: _tel, icon: Icons.phone_outlined, hint: '+237 ...', type: TextInputType.phone, required: true, validator: _vRequis),
                     const SizedBox(height: 16),
                     // Logement = sélecteur d'unité (relié au module biens)
                     GestureDetector(
@@ -297,10 +334,10 @@ class _AddLocataireScreenState extends State<AddLocataireScreen> {
                     ),
                     const SizedBox(height: 24),
                     _SectionTitle(t.contractDetails),
-                    Row(children: [
-                      Expanded(child: _GlassInput(label: t.rentFcfa, controller: _loyer, icon: Icons.payments_outlined, type: TextInputType.number)),
+                    Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Expanded(child: _GlassInput(label: t.rentFcfa, controller: _loyer, icon: Icons.payments_outlined, type: TextInputType.number, required: true, validator: _vMontant)),
                       const SizedBox(width: 12),
-                      Expanded(child: _GlassInput(label: t.dueDayField, controller: _jour, icon: Icons.calendar_month_outlined, type: TextInputType.number)),
+                      Expanded(child: _GlassInput(label: t.dueDayField, controller: _jour, icon: Icons.calendar_month_outlined, type: TextInputType.number, required: true, validator: _vJour)),
                     ]),
                     const SizedBox(height: 16),
                     _GlassInput(label: t.penaltyPerDay, controller: _penalite, icon: Icons.money_off_csred_outlined, type: TextInputType.number),
@@ -328,12 +365,12 @@ class _AddLocataireScreenState extends State<AddLocataireScreen> {
                     const SizedBox(height: 24),
                     // ── Mentions légales (bail) ──
                     _SectionTitle(t.legalSection),
-                    _GlassInput(label: t.addressHousing, controller: _adresseLogement, icon: Icons.location_on_outlined),
+                    _GlassInput(label: t.addressHousing, controller: _adresseLogement, icon: Icons.location_on_outlined, required: true, validator: _vRequis),
                     const SizedBox(height: 16),
-                    Row(children: [
+                    Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Expanded(child: _GlassInput(label: t.monthlyCharges, controller: _charges, icon: Icons.receipt_long_outlined, type: TextInputType.number)),
                       const SizedBox(width: 12),
-                      Expanded(child: _GlassInput(label: t.leaseDurationMonths, controller: _dureeBail, icon: Icons.event_outlined, type: TextInputType.number)),
+                      Expanded(child: _GlassInput(label: t.leaseDurationMonths, controller: _dureeBail, icon: Icons.event_outlined, type: TextInputType.number, required: true, validator: _vDuree)),
                     ]),
                     const SizedBox(height: 16),
                     Container(
@@ -366,7 +403,9 @@ class _AddLocataireScreenState extends State<AddLocataireScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                       decoration: BoxDecoration(color: context.cCard, borderRadius: BorderRadius.circular(16), border: Border.all(color: context.cBorder)),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(t.idType, style: TextStyle(fontSize: 11, color: context.cTextSub, fontWeight: FontWeight.w600)),
+                        RichText(text: TextSpan(text: t.idType,
+                            style: TextStyle(fontSize: 11, color: context.cTextSub, fontWeight: FontWeight.w600),
+                            children: const [TextSpan(text: ' *', style: TextStyle(color: AppColors.danger))])),
                         DropdownButton<String>(
                           value: _typePiece,
                           isExpanded: true,
@@ -381,29 +420,9 @@ class _AddLocataireScreenState extends State<AddLocataireScreen> {
                       ]),
                     ),
                     const SizedBox(height: 16),
-                    _GlassInput(label: t.idNumber, controller: _numPiece, icon: Icons.badge_outlined),
+                    _GlassInput(label: t.idNumber, controller: _numPiece, icon: Icons.badge_outlined, required: true, validator: _vRequis),
                     const SizedBox(height: 12),
-                    GestureDetector(
-                      onTap: _choisirPiece,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                        decoration: BoxDecoration(
-                          color: context.cCard,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: _piecePath != null ? AppColors.success : context.cBorder),
-                        ),
-                        child: Row(children: [
-                          Icon(_piecePath != null ? Icons.check_circle_rounded : Icons.upload_file_outlined,
-                              color: _piecePath != null ? AppColors.success : AppColors.blue, size: 20),
-                          const SizedBox(width: 10),
-                          Expanded(child: Text(
-                            _pieceName ?? t.attachId,
-                            style: TextStyle(fontSize: 13, color: context.cText, fontWeight: FontWeight.w600),
-                            overflow: TextOverflow.ellipsis,
-                          )),
-                        ]),
-                      ),
-                    ),
+                    _buildPiecesIdentite(t),
                     const SizedBox(height: 24),
                     _SectionTitle(t.currentStatus),
                     _StatutPicker(selected: _statut, onSelect: (s) => setState(() => _statut = s)),
@@ -546,25 +565,187 @@ class _AddLocataireScreenState extends State<AddLocataireScreen> {
     );
   }
 
-  Future<void> _choisirPiece() async {
-    final res = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+  /// Libellé auto pour guider la capture des faces : Recto, puis Verso, puis vide.
+  String _libelleAuto() {
+    final total = _piecesExistantes.length + _piecesLocales.length;
+    if (total == 0) return 'Recto';
+    if (total == 1) return 'Verso';
+    return '';
+  }
+
+  /// Widget : section « Pièce(s) d'identité » — plusieurs faces ou un PDF.
+  Widget _buildPiecesIdentite(AppLocalizations t) {
+    final vignettes = <Widget>[
+      ..._piecesExistantes.map((p) => _vignette(
+            label: (p['libelle']?.toString().isNotEmpty ?? false)
+                ? p['libelle'].toString()
+                : t.idDocument,
+            isPdf: (p['fichier']?.toString().toLowerCase().endsWith('.pdf') ?? false),
+            onDelete: () => _supprimerPieceExistante(p),
+          )),
+      ..._piecesLocales.asMap().entries.map((e) => _vignette(
+            label: e.value.libelle.isNotEmpty ? e.value.libelle : t.idDocument,
+            isPdf: e.value.isPdf,
+            filePath: e.value.isPdf ? null : e.value.path,
+            onDelete: () => setState(() => _piecesLocales.removeAt(e.key)),
+          )),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: context.cCard, borderRadius: BorderRadius.circular(16), border: Border.all(color: context.cBorder)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(t.idDocumentSection, style: TextStyle(fontSize: 11, color: context.cTextSub, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 2),
+        Text(t.idDocumentHint, style: TextStyle(fontSize: 11, color: context.cHint)),
+        const SizedBox(height: 12),
+        if (vignettes.isNotEmpty) ...[
+          Wrap(spacing: 10, runSpacing: 10, children: vignettes),
+          const SizedBox(height: 12),
+        ],
+        GestureDetector(
+          onTap: _ajouterPieceSheet,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.blue.withOpacity(0.5)),
+            ),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              const Icon(Icons.add_a_photo_outlined, color: AppColors.blue, size: 18),
+              const SizedBox(width: 8),
+              Text(t.addIdDocument, style: const TextStyle(color: AppColors.blue, fontWeight: FontWeight.w600, fontSize: 13)),
+            ]),
+          ),
+        ),
+      ]),
     );
-    if (res != null && res.files.single.path != null) {
-      setState(() {
-        _piecePath = res.files.single.path;
-        _pieceName = res.files.single.name;
-      });
+  }
+
+  Widget _vignette({required String label, required bool isPdf, String? filePath, required VoidCallback onDelete}) {
+    return SizedBox(
+      width: 84,
+      child: Column(children: [
+        Stack(clipBehavior: Clip.none, children: [
+          Container(
+            width: 84, height: 64,
+            decoration: BoxDecoration(
+              color: context.cSurface,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: context.cBorder),
+              image: filePath != null
+                  ? DecorationImage(image: FileImage(File(filePath)), fit: BoxFit.cover)
+                  : null,
+            ),
+            child: filePath != null
+                ? null
+                : Icon(isPdf ? Icons.picture_as_pdf_rounded : Icons.image_outlined,
+                    color: isPdf ? AppColors.danger : context.cHint, size: 26),
+          ),
+          Positioned(
+            top: -6, right: -6,
+            child: GestureDetector(
+              onTap: onDelete,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: const BoxDecoration(color: AppColors.danger, shape: BoxShape.circle),
+                child: const Icon(Icons.close_rounded, color: Colors.white, size: 14),
+              ),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 4),
+        Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 10, color: context.cTextSub)),
+      ]),
+    );
+  }
+
+  Future<void> _supprimerPieceExistante(Map<String, dynamic> p) async {
+    if (!isEdit) {
+      setState(() => _piecesExistantes.remove(p));
+      return;
+    }
+    final ok = await LocataireService().supprimerPieceIdentite(widget.locataire!.id, p['id']);
+    if (ok && mounted) setState(() => _piecesExistantes.remove(p));
+  }
+
+  void _ajouterPieceSheet() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    final t = AppLocalizations.of(context);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: context.cCard,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (sheetCtx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(height: 14),
+          Text(t.addIdDocument, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: context.cText)),
+          const SizedBox(height: 8),
+          ListTile(
+            leading: const Icon(Icons.camera_alt_outlined, color: AppColors.blue),
+            title: Text(t.takePhoto, style: TextStyle(color: context.cText)),
+            onTap: () { Navigator.pop(sheetCtx); _prendrePhoto(); },
+          ),
+          ListTile(
+            leading: const Icon(Icons.photo_library_outlined, color: AppColors.blue),
+            title: Text(t.chooseFromGallery, style: TextStyle(color: context.cText)),
+            onTap: () { Navigator.pop(sheetCtx); _choisirImages(); },
+          ),
+          ListTile(
+            leading: const Icon(Icons.picture_as_pdf_outlined, color: AppColors.blue),
+            title: Text(t.choosePdf, style: TextStyle(color: context.cText)),
+            onTap: () { Navigator.pop(sheetCtx); _choisirPdf(); },
+          ),
+          const SizedBox(height: 12),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _prendrePhoto() async {
+    try {
+      final x = await ImagePicker().pickImage(source: ImageSource.camera, imageQuality: 70);
+      if (x != null && mounted) {
+        setState(() => _piecesLocales.add(_PieceLocale(path: x.path, name: x.name, isPdf: false, libelle: _libelleAuto())));
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _choisirImages() async {
+    try {
+      final xs = await ImagePicker().pickMultiImage(imageQuality: 70);
+      if (xs.isNotEmpty && mounted) {
+        setState(() {
+          for (final x in xs) {
+            _piecesLocales.add(_PieceLocale(path: x.path, name: x.name, isPdf: false, libelle: _libelleAuto()));
+          }
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _choisirPdf() async {
+    final res = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['pdf']);
+    if (res != null && res.files.single.path != null && mounted) {
+      setState(() => _piecesLocales.add(_PieceLocale(
+          path: res.files.single.path!, name: res.files.single.name, isPdf: true, libelle: '')));
     }
   }
 
   void _save() async {
     final t = AppLocalizations.of(context);
-    if (!_formKey.currentState!.validate()) return;
-    if (_prenom.text.trim().isEmpty || _nom.text.trim().isEmpty) {
+    if (!_formKey.currentState!.validate()) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(t.nameRequired), backgroundColor: AppColors.danger),
+        SnackBar(content: Text(t.fillRequiredFields), backgroundColor: AppColors.danger),
+      );
+      return;
+    }
+    // Le type de pièce est un Dropdown (hors Form) : validation manuelle.
+    if (_typePiece == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(t.idTypeRequired), backgroundColor: AppColors.danger),
       );
       return;
     }
@@ -621,6 +802,10 @@ class _AddLocataireScreenState extends State<AddLocataireScreen> {
         chargesMensuelles: double.tryParse(_charges.text),
         dureeBailMois:     int.tryParse(_dureeBail.text),
         frequencePaiement: _frequence,
+        profession:        _profession.text.trim(),
+        revenusMensuels:   revenus,
+        typePieceIdentite: _typePiece,
+        numeroPieceIdentite: _numPiece.text.trim(),
       );
       targetId = widget.locataire!.id;
     } else {
@@ -652,9 +837,11 @@ class _AddLocataireScreenState extends State<AddLocataireScreen> {
       targetId = created?.id;
     }
 
-    // Upload de la pièce d'identité si un fichier a été sélectionné (2.3)
-    if (success && _piecePath != null && targetId != null) {
-      await LocataireService().uploadPieceIdentite(targetId, _piecePath!);
+    // Upload des pièces d'identité ajoutées (recto/verso/PDF) — 2.3
+    if (success && targetId != null && _piecesLocales.isNotEmpty) {
+      for (final p in _piecesLocales) {
+        await LocataireService().ajouterPieceIdentite(targetId, p.path, libelle: p.libelle);
+      }
     }
     
     if (!mounted) return;
@@ -677,6 +864,15 @@ class _AddLocataireScreenState extends State<AddLocataireScreen> {
   }
 }
 
+/// Pièce d'identité sélectionnée localement, en attente de téléversement.
+class _PieceLocale {
+  final String path;
+  final String name;
+  final bool isPdf;
+  final String libelle;
+  _PieceLocale({required this.path, required this.name, required this.isPdf, required this.libelle});
+}
+
 class _SectionTitle extends StatelessWidget {
   final String title;
   const _SectionTitle(this.title);
@@ -693,24 +889,43 @@ class _GlassInput extends StatelessWidget {
   final IconData icon;
   final String? hint;
   final TextInputType type;
-  const _GlassInput({required this.label, required this.controller, required this.icon, this.hint, this.type = TextInputType.text});
+  final bool required;
+  final String? Function(String?)? validator;
+  const _GlassInput({required this.label, required this.controller, required this.icon, this.hint, this.type = TextInputType.text, this.required = false, this.validator});
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(color: context.cCard, borderRadius: BorderRadius.circular(16), border: Border.all(color: context.cBorder)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: TextStyle(fontSize: 11, color: context.cTextSub, fontWeight: FontWeight.w600)),
+          RichText(
+            text: TextSpan(
+              text: label,
+              style: TextStyle(fontSize: 11, color: context.cTextSub, fontWeight: FontWeight.w600),
+              children: required
+                  ? const [TextSpan(text: ' *', style: TextStyle(color: AppColors.danger))]
+                  : const [],
+            ),
+          ),
           const SizedBox(height: 4),
-          Row(children: [
-            Icon(icon, size: 18, color: AppColors.blue),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Padding(padding: const EdgeInsets.only(top: 8), child: Icon(icon, size: 18, color: AppColors.blue)),
             const SizedBox(width: 10),
             Expanded(
               child: TextFormField(
                 controller: controller,
                 keyboardType: type,
+                validator: validator,
+                autovalidateMode: AutovalidateMode.onUserInteraction,
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: context.cText),
-                decoration: InputDecoration(hintText: hint, hintStyle: TextStyle(color: context.cHint, fontSize: 14), border: InputBorder.none, isDense: true),
+                decoration: InputDecoration(
+                  hintText: hint,
+                  hintStyle: TextStyle(color: context.cHint, fontSize: 14),
+                  border: InputBorder.none,
+                  isDense: true,
+                  errorStyle: const TextStyle(fontSize: 11),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 6),
+                ),
               ),
             ),
           ]),
