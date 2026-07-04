@@ -80,4 +80,44 @@ class PaiementService {
       return false;
     }
   }
+
+  /// Crée une demande d'encaissement Mobile Money pour un locataire.
+  /// Renvoie {url, montant, error?}. `url` non nul = succès.
+  Future<Map<String, dynamic>> creerDemandePaiement(int locataireId) async {
+    try {
+      final r = await _dio.post('demandes-paiement/', data: {'locataire': locataireId});
+      if (r.statusCode == 201) {
+        return {'url': r.data['url_paiement'], 'montant': r.data['montant']};
+      }
+      return {'error': 'unknown'};
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      return {'error': (data is Map ? data['error'] : null) ?? 'network'};
+    } catch (e) {
+      print('Erreur creerDemandePaiement: $e');
+      return {'error': 'network'};
+    }
+  }
+
+  /// Config du compte marchand (état). Renvoie la map serveur ou null.
+  Future<Map<String, dynamic>?> getCompteMarchand() async {
+    try {
+      final r = await _dio.get('compte-marchand/');
+      return r.statusCode == 200 ? Map<String, dynamic>.from(r.data) : null;
+    } catch (e) {
+      print('Erreur getCompteMarchand: $e');
+      return null;
+    }
+  }
+
+  /// Enregistre le compte marchand (PUT partiel). Renvoie true si OK.
+  Future<bool> updateCompteMarchand(Map<String, dynamic> data) async {
+    try {
+      final r = await _dio.put('compte-marchand/', data: data);
+      return r.statusCode == 200;
+    } catch (e) {
+      print('Erreur updateCompteMarchand: $e');
+      return false;
+    }
+  }
 }
