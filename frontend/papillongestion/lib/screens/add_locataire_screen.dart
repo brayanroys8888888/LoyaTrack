@@ -924,7 +924,8 @@ class _GlassInput extends StatelessWidget {
                   border: InputBorder.none,
                   isDense: true,
                   errorStyle: const TextStyle(fontSize: 11),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 6),
+                  // Marge interne à gauche pour que le texte ne colle pas à l'icône.
+                  contentPadding: const EdgeInsets.only(left: 8, top: 6, bottom: 6),
                 ),
               ),
             ),
