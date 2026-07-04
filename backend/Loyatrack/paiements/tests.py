@@ -56,3 +56,78 @@ class PaiementServiceTests(TestCase):
         p = self._paiement(50000)
         pdf = generer_quittance_pdf(p)
         self.assertTrue(pdf.startswith(b'%PDF'))
+
+
+class EncaissementLoyerTests(TestCase):
+    """Encaissement Mobile Money : demande → webhook → Paiement (provider fake)."""
+
+    def setUp(self):
+        self.bailleur = User.objects.create_user(email='b@test.com', password='x')
+        self.loc = Locataire.objects.create(
+            bailleur=self.bailleur, nom='Doe', prenom='Jane', telephone='690',
+            montant_loyer=Decimal('50000'), charges_mensuelles=Decimal('10000'),
+            jour_echeance=5, statut='En retard', date_entree=date(2024, 1, 1),
+        )
+
+    def _webhook(self, reference):
+        from rest_framework.test import APIRequestFactory
+        from .views import WebhookLoyerView
+        req = APIRequestFactory().post(
+            '/api/v1/webhooks/paiement-loyer/', {'reference': reference}, format='json')
+        return WebhookLoyerView.as_view()(req)
+
+    def test_creer_demande_calcule_montant_frais_repercutes(self):
+        from .services import creer_demande_paiement
+        d = creer_demande_paiement(self.loc)
+        # Base = loyer 50000 + charges 10000 = 60000 ; frais 2% = 1200.
+        self.assertEqual(d.montant_loyer, Decimal('60000'))
+        self.assertEqual(d.frais, Decimal('1200'))
+        self.assertEqual(d.montant, Decimal('61200'))
+        self.assertEqual(d.statut, 'en_attente')
+        self.assertTrue(d.url_paiement)  # URL fake renseignée
+
+    def test_webhook_confirme_cree_paiement_et_solde_locataire(self):
+        from .services import creer_demande_paiement
+        d = creer_demande_paiement(self.loc)
+        resp = self._webhook(str(d.reference_interne))
+        self.assertEqual(resp.status_code, 200)
+        d.refresh_from_db()
+        self.assertEqual(d.statut, 'payee')
+        self.assertIsNotNone(d.paiement)
+        # Le Paiement enregistré = loyer (hors frais, qui rémunèrent le prestataire).
+        self.assertEqual(d.paiement.montant, Decimal('60000'))
+        self.assertEqual(d.paiement.mode_paiement, 'Mobile Money')
+        self.loc.refresh_from_db()
+        self.assertEqual(self.loc.statut, 'Payé')
+
+    def test_webhook_idempotent_un_seul_paiement(self):
+        from .services import creer_demande_paiement
+        d = creer_demande_paiement(self.loc)
+        self._webhook(str(d.reference_interne))
+        self._webhook(str(d.reference_interne))  # rejeu du webhook
+        self.assertEqual(Paiement.objects.filter(locataire=self.loc).count(), 1)
+
+    def test_webhook_reference_inconnue_404(self):
+        import uuid
+        resp = self._webhook(str(uuid.uuid4()))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_reversement_immediat_vers_bailleur(self):
+        """Bailleur avec numéro de reversement configuré → transfert immédiat."""
+        from .models import CompteMarchand
+        from .services import creer_demande_paiement
+        CompteMarchand.objects.create(
+            bailleur=self.bailleur, numero_momo='690123456', operateur='mtn', actif=True)
+        d = creer_demande_paiement(self.loc)
+        self._webhook(str(d.reference_interne))
+        d.refresh_from_db()
+        self.assertEqual(d.reversement_statut, 'effectue')  # provider fake → succès
+        self.assertTrue(d.reversement_ref)
+
+    def test_pas_de_reversement_sans_compte(self):
+        """Sans compte de reversement configuré, la demande reste 'non_requis'."""
+        from .services import creer_demande_paiement
+        d = creer_demande_paiement(self.loc)
+        self._webhook(str(d.reference_interne))
+        d.refresh_from_db()
+        self.assertEqual(d.reversement_statut, 'non_requis')

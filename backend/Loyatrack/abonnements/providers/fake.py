@@ -20,3 +20,14 @@ class FakeProvider(PaiementProvider):
 
     def verifier_signature(self, request):
         return True
+
+    def creer_paiement_generique(self, *, reference, montant, devise,
+                                 description, return_url, notify_url, credentials):
+        return f"/paiements/demande/fake/?ref={reference}&montant={int(montant)}"
+
+    def verifier_paiement(self, reference, credentials):
+        return True
+
+    def effectuer_transfert(self, *, reference, montant, devise, numero, operateur):
+        # Reversement simulé : toujours réussi (pour les tests).
+        return True, f"FAKE-TRANSFER-{reference}", ''

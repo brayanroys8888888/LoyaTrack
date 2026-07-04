@@ -294,6 +294,11 @@ CINETPAY_SITE_ID = env('CINETPAY_SITE_ID', default='')
 CINETPAY_SECRET_KEY = env('CINETPAY_SECRET_KEY', default='')
 CINETPAY_NOTIFY_URL = env('CINETPAY_NOTIFY_URL', default='')
 CINETPAY_RETURN_URL = env('CINETPAY_RETURN_URL', default='')
+# Encaissement des loyers (mode centralisé) : webhook dédié + reversement.
+CINETPAY_NOTIFY_URL_LOYER = env('CINETPAY_NOTIFY_URL_LOYER', default='')
+# API Transfert d'argent (reversement du loyer vers le Mobile Money du bailleur).
+CINETPAY_TRANSFER_PASSWORD = env('CINETPAY_TRANSFER_PASSWORD', default='')
+CINETPAY_TRANSFER_NOTIFY_URL = env('CINETPAY_TRANSFER_NOTIFY_URL', default='')
 
 # Email Config (Mock/Console for now)
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'

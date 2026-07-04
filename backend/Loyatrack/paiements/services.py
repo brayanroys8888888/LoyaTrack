@@ -67,6 +67,116 @@ def appliquer_paiement(paiement):
     return paiement
 
 
+def creer_demande_paiement(locataire):
+    """Crée une demande d'encaissement Mobile Money et renvoie l'objet + l'URL.
+
+    Montant = loyer + charges + frais (frais répercutés au locataire). La collecte
+    se fait sur le compte PLATEFORME LoyaTrack (settings.CINETPAY_*) ; le bailleur
+    doit avoir configuré son numéro de reversement. Lève ValueError sinon (hors
+    provider fake, utilisé en test).
+    """
+    from django.conf import settings
+    from abonnements.providers import get_provider
+    from .models import DemandePaiement
+
+    provider = get_provider()
+    compte = getattr(locataire.bailleur, 'compte_marchand', None)
+    if provider.nom != 'fake' and not (compte and compte.est_configure()):
+        raise ValueError("compte_marchand_non_configure")
+
+    base = (locataire.montant_loyer or Decimal('0')) + (locataire.charges_mensuelles or Decimal('0'))
+    taux_frais = compte.frais_pourcentage if compte else Decimal('2.00')
+    frais = (base * taux_frais / Decimal('100')).quantize(Decimal('1'))
+    total = base + frais
+
+    demande = DemandePaiement.objects.create(
+        locataire=locataire, montant=total, montant_loyer=base, frais=frais,
+        periode=date.today().replace(day=1), prestataire=provider.nom,
+    )
+    try:
+        url = provider.creer_paiement_generique(
+            reference=demande.reference_interne, montant=total, devise='XAF',
+            description=f"Loyer {locataire.prenom} {locataire.nom}".strip(),
+            return_url=getattr(settings, 'CINETPAY_RETURN_URL', '') or '',
+            notify_url=getattr(settings, 'CINETPAY_NOTIFY_URL_LOYER', '') or '',
+            credentials={},  # collecte sur le compte plateforme (fallback settings)
+        )
+    except Exception as e:
+        demande.statut = 'echouee'
+        demande.payload = {'erreur': str(e)}
+        demande.save(update_fields=['statut', 'payload'])
+        raise
+    demande.url_paiement = url
+    demande.save(update_fields=['url_paiement'])
+    return demande
+
+
+def confirmer_demande_paiement(demande):
+    """Transforme une demande réussie en `Paiement` réel (idempotent).
+
+    Le montant enregistré est le loyer (hors frais : les frais couvrent la
+    collecte + le reversement). Réutilise `appliquer_paiement` → statut Payé,
+    pénalités clôturées, quittance disponible. Déclenche ensuite le reversement
+    immédiat du loyer net vers le Mobile Money du bailleur.
+    """
+    from django.db import transaction
+    from .models import DemandePaiement, Paiement
+
+    with transaction.atomic():
+        demande = DemandePaiement.objects.select_for_update().get(pk=demande.pk)
+        if demande.statut == 'payee' and demande.paiement_id:
+            return demande.paiement  # déjà traité → idempotent (pas de double reversement)
+
+        paiement = Paiement.objects.create(
+            locataire=demande.locataire,
+            montant=demande.montant_loyer,
+            date_paiement=date.today(),
+            mode_paiement='Mobile Money',
+            reference=str(demande.reference_interne),
+        )
+        appliquer_paiement(paiement)
+        demande.paiement = paiement
+        demande.statut = 'payee'
+        demande.date_paiement = timezone.now()
+        demande.save(update_fields=['paiement', 'statut', 'date_paiement'])
+
+    # Reversement HORS transaction (appel réseau) : un échec ici n'annule pas le
+    # paiement déjà encaissé — il est tracé pour relance manuelle.
+    _reverser_loyer(demande)
+    return paiement
+
+
+def _reverser_loyer(demande):
+    """Reverse le loyer net (montant_loyer) sur le Mobile Money du bailleur.
+
+    Le paiement reste valide même si le reversement échoue : on enregistre alors
+    `reversement_statut='echoue'` + le motif pour permettre une relance.
+    """
+    from abonnements.providers import get_provider
+    from .models import DemandePaiement
+
+    compte = getattr(demande.locataire.bailleur, 'compte_marchand', None)
+    if not (compte and compte.est_configure()):
+        return  # pas de destination de reversement → reste 'non_requis'
+
+    demande.reversement_statut = 'en_attente'
+    demande.save(update_fields=['reversement_statut'])
+
+    dest = compte.destination_reversement()
+    try:
+        ok, ref, erreur = get_provider().effectuer_transfert(
+            reference=str(demande.reference_interne), montant=demande.montant_loyer,
+            devise='XAF', numero=dest['numero'], operateur=dest['operateur'],
+        )
+    except Exception as e:  # garde-fou : ne jamais faire remonter l'erreur
+        ok, ref, erreur = False, '', str(e)
+
+    demande.reversement_statut = 'effectue' if ok else 'echoue'
+    demande.reversement_ref = ref or ''
+    demande.reversement_erreur = '' if ok else (erreur or 'échec inconnu')
+    demande.save(update_fields=['reversement_statut', 'reversement_ref', 'reversement_erreur'])
+
+
 def generer_quittance_pdf(paiement):
     """Génère une quittance de loyer au format PDF (bytes) avec ReportLab."""
     from reportlab.lib.pagesizes import A4
