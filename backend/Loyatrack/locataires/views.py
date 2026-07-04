@@ -4,9 +4,12 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.views import APIView
-from django.db.models import Sum
+from django.db.models import Sum, F, Q, Value, DecimalField
+from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from django.utils import timezone
+from datetime import date, timedelta
+from decimal import Decimal
 import threading
 from .serializers import (
     LocataireSerializer, LocataireStatutSerializer, RappelSerializer, NotificationSerializer,
@@ -284,19 +287,83 @@ class DashboardView(APIView):
 
     def get(self, request):
         user = request.user
+        from paiements.models import Paiement
+
+        DEC = DecimalField(max_digits=12, decimal_places=2)
+        zero = Value(Decimal('0'), output_field=DEC)
+
+        # Bornes du mois courant (le cockpit raisonne « ce mois-ci »).
+        today = timezone.localdate()
+        debut_mois = today.replace(day=1)
+        if debut_mois.month == 12:
+            fin_mois = debut_mois.replace(year=debut_mois.year + 1, month=1) - timedelta(days=1)
+        else:
+            fin_mois = debut_mois.replace(month=debut_mois.month + 1) - timedelta(days=1)
+
         locataires = Locataire.objects.filter(bailleur=user, is_deleted=False, archive=False)
 
-        from paiements.models import Paiement
-        revenus = Paiement.objects.filter(locataire__bailleur=user).aggregate(total=Sum('montant'))['total'] or 0
+        # Facturables ce mois : la facturation a démarré (ou pas de date définie).
+        facturables = locataires.filter(
+            Q(date_debut_facturation__isnull=True) | Q(date_debut_facturation__lte=fin_mois)
+        )
 
-        loyers_payes = locataires.filter(statut='Payé').count()
-        en_penalite = locataires.filter(statut='En pénalité').count()
-        en_discussion = locataires.filter(statut='En discussion').count()
-        
-        revenus_attendus = locataires.aggregate(total=Sum('montant_loyer'))['total'] or 0
-        penalites_dues = locataires.aggregate(total=Sum('total_penalites'))['total'] or 0
+        # ── Cockpit d'encaissement (mois courant) ────────────────────────────
+        # Attendu = Σ (loyer + charges) des locataires facturables.
+        attendu_mois = facturables.aggregate(
+            t=Coalesce(Sum(F('montant_loyer') + F('charges_mensuelles'), output_field=DEC), zero)
+        )['t']
 
-        # Statistiques de parc immobilier (module multi-biens)
+        # Encaissé ce mois = Σ des paiements dont la date tombe dans le mois.
+        # NB (MVP) : basé sur date_paiement ; une avance versée un mois antérieur
+        # n'est pas recomptée ici — raffinement possible via un échéancier en V2.
+        paiements_mois = Paiement.objects.filter(
+            locataire__bailleur=user, date_paiement__gte=debut_mois, date_paiement__lte=fin_mois
+        )
+        encaisse_mois = paiements_mois.aggregate(t=Coalesce(Sum('montant'), zero))['t']
+
+        # Montant déjà payé ce mois, par locataire — 1 seule requête agrégée.
+        paye_par_loc = {
+            row['locataire_id']: row['t']
+            for row in paiements_mois.values('locataire_id').annotate(t=Sum('montant'))
+        }
+
+        # Répartition + liste actionnable (calcul en mémoire, sans requête par item).
+        a_jour = en_retard = partiel = en_attente = 0
+        reste_a_encaisser = Decimal('0')
+        a_encaisser = []
+        for l in facturables.only(
+            'id', 'prenom', 'nom', 'logement', 'telephone', 'statut',
+            'montant_loyer', 'charges_mensuelles', 'jour_echeance', 'langue_preferee'
+        ):
+            du = (l.montant_loyer or Decimal('0')) + (l.charges_mensuelles or Decimal('0'))
+            paye = paye_par_loc.get(l.id, Decimal('0'))
+            reste = du - paye
+            if reste <= 0:
+                a_jour += 1
+                continue
+            reste_a_encaisser += reste
+            echu = today.day > (l.jour_echeance or 1)
+            if paye > 0:
+                partiel += 1
+            elif echu:
+                en_retard += 1
+            else:
+                en_attente += 1
+            a_encaisser.append({
+                'locataire_id': l.id,
+                'nom': f"{l.prenom} {l.nom}".strip(),
+                'logement': l.logement or '',
+                'telephone': l.telephone or '',
+                'montant_du': int(reste),
+                'jours_retard': max(0, today.day - l.jour_echeance) if echu else 0,
+                'partiel': paye > 0,
+            })
+        # Les plus en retard d'abord (puis plus gros montant).
+        a_encaisser.sort(key=lambda x: (-x['jours_retard'], -x['montant_du']))
+
+        taux_recouvrement = round(float(encaisse_mois) / float(attendu_mois) * 100, 1) if attendu_mois else 0.0
+
+        # ── Statistiques de parc immobilier (conservées) ─────────────────────
         from biens.models import Propriete, UniteLogement
         nombre_biens = Propriete.objects.filter(bailleur=user).count()
         unites = UniteLogement.objects.filter(propriete__bailleur=user)
@@ -304,20 +371,36 @@ class DashboardView(APIView):
         unites_occupees = unites.filter(locataires__is_deleted=False).distinct().count()
         taux_occupation = round(unites_occupees / total_unites * 100, 1) if total_unites else 0
 
+        # Revenus « tout-temps » (rétro-compat : ancien champ du dashboard).
+        revenus = Paiement.objects.filter(locataire__bailleur=user).aggregate(
+            t=Coalesce(Sum('montant'), zero))['t']
+        penalites_dues = locataires.aggregate(t=Coalesce(Sum('total_penalites'), zero))['t']
+
         data = {
+            # ── Cockpit d'encaissement (nouveau) ──
+            "attendu_mois": int(attendu_mois),
+            "encaisse_mois": int(encaisse_mois),
+            "reste_a_encaisser": int(reste_a_encaisser),
+            "taux_recouvrement": taux_recouvrement,
+            "repartition": {
+                "a_jour": a_jour, "en_retard": en_retard,
+                "partiel": partiel, "en_attente": en_attente,
+            },
+            "a_encaisser": a_encaisser,
+            # ── Champs historiques (rétro-compat frontend) ──
             "total_locataires": locataires.count(),
-            "loyers_payes": loyers_payes,
-            "en_penalite": en_penalite,
-            "en_discussion": en_discussion,
-            "revenus_encaisses": revenus,
-            "revenus_attendus": revenus_attendus,
-            "penalites_dues": penalites_dues,
+            "loyers_payes": a_jour,
+            "en_penalite": locataires.filter(statut='En pénalité').count(),
+            "en_discussion": locataires.filter(statut='En discussion').count(),
+            "revenus_encaisses": int(revenus),
+            "revenus_attendus": int(attendu_mois),
+            "penalites_dues": int(penalites_dues),
             "nombre_biens": nombre_biens,
             "total_unites": total_unites,
             "unites_occupees": unites_occupees,
             "unites_vacantes": total_unites - unites_occupees,
             "taux_occupation": taux_occupation,
-            "alertes": [f"{l.prenom} {l.nom} est en retard" for l in locataires.filter(statut='En pénalité')]
+            "alertes": [f"{x['nom']} — {x['montant_du']} FCFA" for x in a_encaisser[:5]],
         }
         return Response(data)
 

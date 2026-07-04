@@ -125,6 +125,64 @@ class RappelMessageTests(TestCase):
         self.assertIn('dans 5 jours', m)
 
 
+class DashboardCockpitTests(TestCase):
+    """Métriques du cockpit d'encaissement (attendu / encaissé / reste, ce mois)."""
+
+    def setUp(self):
+        self.b = User.objects.create_user(email='b@test.com', password='x')
+
+    def _dashboard(self):
+        from rest_framework.test import APIRequestFactory, force_authenticate
+        from .views import DashboardView
+        req = APIRequestFactory().get('/api/v1/dashboard/')
+        force_authenticate(req, user=self.b)
+        return DashboardView.as_view()(req).data
+
+    def test_attendu_encaisse_reste_et_repartition(self):
+        from paiements.models import Paiement
+        from paiements.services import appliquer_paiement
+        # Deux locataires, dû = loyer 50000 + charges 10000 = 60000 chacun.
+        l1 = _locataire(self.b, charges_mensuelles=Decimal('10000'), jour_echeance=5)
+        l2 = _locataire(self.b, nom='Fotso', prenom='Jean',
+                        charges_mensuelles=Decimal('10000'), jour_echeance=5)
+        # l1 solde son mois ; l2 ne paie rien.
+        appliquer_paiement(Paiement.objects.create(
+            locataire=l1, montant=Decimal('60000'),
+            date_paiement=timezone.localdate(), mode_paiement='Mobile Money'))
+
+        data = self._dashboard()
+        self.assertEqual(data['attendu_mois'], 120000)
+        self.assertEqual(data['encaisse_mois'], 60000)
+        self.assertEqual(data['reste_a_encaisser'], 60000)
+        self.assertEqual(data['taux_recouvrement'], 50.0)
+        self.assertEqual(data['repartition']['a_jour'], 1)
+        ids = [x['locataire_id'] for x in data['a_encaisser']]
+        self.assertIn(l2.id, ids)       # impayé listé
+        self.assertNotIn(l1.id, ids)    # soldé exclu
+
+    def test_paiement_partiel_compte_le_reste(self):
+        from paiements.models import Paiement
+        from paiements.services import appliquer_paiement
+        l = _locataire(self.b, charges_mensuelles=Decimal('0'), jour_echeance=5)  # dû 50000
+        appliquer_paiement(Paiement.objects.create(
+            locataire=l, montant=Decimal('20000'),
+            date_paiement=timezone.localdate(), mode_paiement='Espèces'))
+
+        data = self._dashboard()
+        self.assertEqual(data['reste_a_encaisser'], 30000)
+        self.assertEqual(data['repartition']['partiel'], 1)
+        self.assertEqual(data['a_encaisser'][0]['montant_du'], 30000)
+        self.assertTrue(data['a_encaisser'][0]['partiel'])
+
+    def test_locataire_non_encore_facturable_exclu(self):
+        # Facturation démarrant le mois prochain → hors attendu de ce mois.
+        futur = (timezone.localdate().replace(day=1) + timedelta(days=40)).replace(day=1)
+        _locataire(self.b, date_debut_facturation=futur)
+        data = self._dashboard()
+        self.assertEqual(data['attendu_mois'], 0)
+        self.assertEqual(data['a_encaisser'], [])
+
+
 class VerifierEcheancesConfigTests(TestCase):
     """verifier_echeances respecte la ConfigBailleur (master, jours, canal)."""
 
