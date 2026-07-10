@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import '../models/models.dart';
+import '../core/refresh_bus.dart';
 import '../widgets/shared_widgets.dart';
 import '../widgets/pro_gate.dart';
 import 'detail_paiement_screen.dart';
@@ -27,7 +28,19 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
   @override
   void initState() {
     super.initState();
+    // Réactualisation auto quand une donnée change ailleurs (ajout/modif/suppr).
+    refreshBus.addListener(_onExternalRefresh);
     _fetchData();
+  }
+
+  void _onExternalRefresh() {
+    if (mounted) _onRefresh();
+  }
+
+  @override
+  void dispose() {
+    refreshBus.removeListener(_onExternalRefresh);
+    super.dispose();
   }
 
   Future<void> _fetchData() async {

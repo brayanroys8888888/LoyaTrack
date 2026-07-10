@@ -153,6 +153,12 @@ class WebhookLoyerView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        # Défense en profondeur (parité avec le webhook d'abonnement) : on rejette
+        # une signature invalide si un secret est configuré. La revérification via
+        # l'API du prestataire (verifier_paiement) reste la garantie principale.
+        if not get_provider().verifier_signature(request):
+            return Response({'error': 'Signature invalide'}, status=status.HTTP_403_FORBIDDEN)
+
         data = request.data if hasattr(request, 'data') else request.POST
         reference = data.get('cpm_trans_id') or data.get('transaction_id') or data.get('reference')
         if not reference:

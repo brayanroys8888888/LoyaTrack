@@ -123,6 +123,9 @@ class CinetPayProvider(PaiementProvider):
                 return False, '', f"Auth transfert échouée : {auth.text}"
 
             # Numéro attendu sans préfixe pays (prefix fourni à part).
+            # NB : `operateur` (mtn/orange) n'est volontairement PAS transmis —
+            # l'API Transfert CinetPay déduit l'opérateur du numéro (préfixe +237).
+            # Il reste dans la signature pour un futur prestataire qui l'exigerait.
             phone = ''.join(ch for ch in (numero or '') if ch.isdigit())
             if phone.startswith('237'):
                 phone = phone[3:]

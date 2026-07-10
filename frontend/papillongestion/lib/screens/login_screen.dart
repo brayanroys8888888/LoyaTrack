@@ -572,7 +572,7 @@ class _GoogleBtn extends StatelessWidget {
                           fontSize: 12,
                           fontWeight: FontWeight.w700)))),
           const SizedBox(width: 10),
-          Text('Continuer avec Google',
+          Text(AppLocalizations.of(ctx).continueWithGoogle,
               style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w500,

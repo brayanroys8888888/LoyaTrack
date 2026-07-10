@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'api_config.dart';
+import 'refresh_bus.dart';
 
 class ApiClient {
   static final ApiClient _instance = ApiClient._internal();
@@ -48,6 +49,19 @@ class ApiClient {
             options.headers['Authorization'] = 'Bearer $token';
           }
           return handler.next(options);
+        },
+        onResponse: (response, handler) {
+          // Auto-refresh global : toute mutation réussie (POST/PUT/PATCH/DELETE)
+          // signale un changement de données, pour que les écrans principaux se
+          // réactualisent (on exclut l'authentification, sans effet sur les listes).
+          final method = response.requestOptions.method.toUpperCase();
+          final path = response.requestOptions.path;
+          const mutations = {'POST', 'PUT', 'PATCH', 'DELETE'};
+          final estAuth = path.contains('auth/') || path.contains('token');
+          if (mutations.contains(method) && !estAuth) {
+            refreshBus.bump();
+          }
+          return handler.next(response);
         },
         onError: (DioException e, handler) async {
           final req = e.requestOptions;

@@ -160,6 +160,19 @@ class DashboardCockpitTests(TestCase):
         self.assertIn(l2.id, ids)       # impayé listé
         self.assertNotIn(l1.id, ids)    # soldé exclu
 
+    def test_taux_recouvrement_borne_a_100_avec_avance(self):
+        """Une avance ne fait plus dépasser 100 % de recouvrement (finding #7)."""
+        from paiements.models import Paiement
+        from paiements.services import appliquer_paiement
+        l = _locataire(self.b, charges_mensuelles=Decimal('10000'), jour_echeance=5)  # dû 60000
+        appliquer_paiement(Paiement.objects.create(
+            locataire=l, montant=Decimal('120000'),  # 2 mois versés ce mois-ci
+            date_paiement=timezone.localdate(), mode_paiement='Mobile Money'))
+        data = self._dashboard()
+        self.assertEqual(data['encaisse_mois'], 120000)     # trésorerie réelle du mois
+        self.assertEqual(data['reste_a_encaisser'], 0)      # mois couvert
+        self.assertEqual(data['taux_recouvrement'], 100.0)  # borné (et non 200 %)
+
     def test_paiement_partiel_compte_le_reste(self):
         from paiements.models import Paiement
         from paiements.services import appliquer_paiement

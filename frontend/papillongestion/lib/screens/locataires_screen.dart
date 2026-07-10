@@ -3,6 +3,7 @@ import 'dart:ui' as import_ui;
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import '../models/models.dart';
+import '../core/refresh_bus.dart';
 import '../widgets/shared_widgets.dart';
 import 'detail_screen.dart';
 import 'add_locataire_screen.dart';
@@ -27,6 +28,8 @@ class _LocatairesScreenState extends State<LocatairesScreen> {
   void initState() {
     super.initState();
     _searchController.addListener(() => setState(() {}));
+    // Réactualisation auto quand une donnée change ailleurs (ajout/modif/suppr).
+    refreshBus.addListener(_onExternalRefresh);
     _fetchData();
   }
 
@@ -42,8 +45,13 @@ class _LocatairesScreenState extends State<LocatairesScreen> {
     if (mounted) setState(() => _allLocataires = fresh);
   }
 
+  void _onExternalRefresh() {
+    if (mounted) _onRefresh();
+  }
+
   @override
   void dispose() {
+    refreshBus.removeListener(_onExternalRefresh);
     _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -121,6 +129,14 @@ class _LocatairesScreenState extends State<LocatairesScreen> {
                             AppColors.blue,
                             context,
                             () => setState(() => _filter = null)),
+                        const SizedBox(width: 8),
+                        _chip(
+                            t.filterNew(_count(StatutLocataire.nouveau)),
+                            _filter == StatutLocataire.nouveau,
+                            AppColors.blue,
+                            context,
+                            () => setState(
+                                () => _filter = StatutLocataire.nouveau)),
                         const SizedBox(width: 8),
                         _chip(
                             t.filterPaid(_count(StatutLocataire.paye)),

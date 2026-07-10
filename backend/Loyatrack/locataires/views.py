@@ -318,8 +318,11 @@ class DashboardView(APIView):
         # Encaissé ce mois = trésorerie réellement entrée ce mois civil (par
         # date_paiement). La COUVERTURE par locataire (soldé / reste), elle, est
         # calculée par période ci-dessous — une avance d'un mois antérieur y compte.
+        # Restreint aux locataires actifs (non supprimés/archivés) pour rester
+        # cohérent avec l'« attendu » ci-dessus, calculé sur les mêmes locataires.
         paiements_mois = Paiement.objects.filter(
-            locataire__bailleur=user, date_paiement__gte=debut_mois, date_paiement__lte=fin_mois
+            locataire__bailleur=user, locataire__is_deleted=False, locataire__archive=False,
+            date_paiement__gte=debut_mois, date_paiement__lte=fin_mois,
         )
         encaisse_mois = paiements_mois.aggregate(t=Coalesce(Sum('montant'), zero))['t']
 
@@ -377,7 +380,10 @@ class DashboardView(APIView):
         # Les plus en retard d'abord (puis plus gros montant).
         a_encaisser.sort(key=lambda x: (-x['jours_retard'], -x['montant_du']))
 
-        taux_recouvrement = round(float(encaisse_mois) / float(attendu_mois) * 100, 1) if attendu_mois else 0.0
+        # Taux de recouvrement = part de l'attendu réellement COUVERTE (par période),
+        # borné à [0, 100] — une avance ne fait plus dépasser 100 % (finding #7).
+        couvert = attendu_mois - reste_a_encaisser
+        taux_recouvrement = round(float(couvert) / float(attendu_mois) * 100, 1) if attendu_mois else 0.0
 
         # ── Statistiques de parc immobilier (conservées) ─────────────────────
         from biens.models import Propriete, UniteLogement

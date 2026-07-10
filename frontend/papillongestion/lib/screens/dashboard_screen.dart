@@ -6,6 +6,7 @@ import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import '../models/models.dart';
 import '../core/abonnement_provider.dart';
+import '../core/refresh_bus.dart';
 import '../widgets/shared_widgets.dart';
 import 'paywall_screen.dart';
 import 'detail_screen.dart';
@@ -39,7 +40,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    // Réactualisation auto quand une donnée change ailleurs (ajout/modif/suppr).
+    refreshBus.addListener(_onExternalRefresh);
     _fetchData();
+  }
+
+  void _onExternalRefresh() {
+    if (mounted) _onRefresh();
+  }
+
+  @override
+  void dispose() {
+    refreshBus.removeListener(_onExternalRefresh);
+    super.dispose();
   }
 
   /// Récupère les données du header (profil + notifications non lues).
