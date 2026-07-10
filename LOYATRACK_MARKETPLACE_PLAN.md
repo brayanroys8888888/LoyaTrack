@@ -1,6 +1,6 @@
 # LOYATRACK — Plan d'implémentation : Vitrine d'annonces + Messagerie (marketplace de location)
 
-> Statut : **conception validée, Palier 1 spécifié** (voir §9), pas encore implémenté.
+> Statut : **Paliers 1 & 2 IMPLÉMENTÉS** (branche `feat/marketplace-annonces`, 7 commits, recette e2e OK). Reste Palier 3 (messagerie + anti-arnaque) et Palier 4 (monétisation). Spéc détaillée du Palier 1 en §9.
 > Objectif stratégique : rendre LoyaTrack **indispensable même au bailleur de 1–5 logements** en l'accrochant à une douleur plus grande et récurrente que la gestion — **re-louer un logement vacant**. Le CRM devient le back-office ; la vitrine devient l'acquisition.
 > Avantage déloyal à exploiter à fond : **LoyaTrack connaît déjà les unités vacantes** (`biens.UniteLogement`) et **l'identité vérifiée du bailleur** (pièce d'identité). Publier une annonce doit être un geste à **1 tap, pré-rempli**, et afficher un badge **« Bailleur vérifié »** qu'aucun groupe Facebook n'a.
 > **Décisions actées (2026-07-10)** : (1) **marque unique LoyaTrack**, vitrine grand public sous le libellé « Logements », servie en **sous-dossier `/logements/`** (pas un sous-domaine — on mutualise l'autorité SEO ; réversible plus tard) ; (2) **identité chercheur = numéro de téléphone vérifié une seule fois** (OTP **WhatsApp de préférence**, SMS en repli), de confiance ensuite pendant une période (pas de re-OTP par contact), table **`Chercheur` distincte** du modèle bailleur, **Google Sign-In optionnel** mais téléphone toujours capturé, **jamais de contact anonyme**.
@@ -227,7 +227,7 @@ On ne veut pas d'un compte lourd (friction = mort du funnel), mais pas non plus 
 
 ## 6. Séquençage (paliers livrables indépendamment)
 
-### Palier 1 — « Publier depuis une unité vacante » + page publique partageable  ⟵ *commencer ici*
+### Palier 1 — « Publier depuis une unité vacante » + page publique partageable  ✅ FAIT
 Livrable : le bailleur publie une annonce en 1 tap (pré-remplie depuis `UniteLogement` vacante), obtient une **URL publique SEO** partageable (WhatsApp/Facebook). Valeur **jour 1 sans trafic marketplace** (outil de diffusion) + amorce du stock et des pages SEO.
 - Modèles `Ville`, `Quartier`, `Annonce`, `PhotoAnnonce` + migrations + seed localisations.
 - API (app) : CRUD annonce scopé bailleur, upload photos (multipart, comme l'existant), « publier depuis unité ».
@@ -235,7 +235,7 @@ Livrable : le bailleur publie une annonce en 1 tap (pré-remplie depuis `UniteLo
 - Flutter : section « Mes annonces » (liste, créer/éditer, publier, partager le lien), entrée depuis une unité vacante dans `biens`.
 - Dépublication auto à la re-location.
 
-### Palier 2 — Moteur de recherche + pages de localisation (SEO)
+### Palier 2 — Moteur de recherche + pages de localisation (SEO)  ✅ FAIT
 - Pages liste ville/quartier/type + combos à forte intention, `ItemList` JSON-LD, breadcrumb.
 - `sitemap.xml`, `robots.txt`, ping moteurs, cache Redis.
 - Recherche à facettes (`/recherche/`) : localisation, type, chambres, prix, meublé.
