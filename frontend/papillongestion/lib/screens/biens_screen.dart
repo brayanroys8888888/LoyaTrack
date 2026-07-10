@@ -5,6 +5,9 @@ import '../models/bien.dart';
 import '../models/models.dart';
 import '../widgets/shared_widgets.dart';
 import '../services/bien_service.dart';
+import '../services/annonce_service.dart';
+import 'add_edit_annonce_screen.dart';
+import 'mes_annonces_screen.dart';
 
 /// Libellé localisé d'un type de bien (la valeur stockée reste la clé FR).
 String typeBienLabelL(String type, AppLocalizations t) => switch (type) {
@@ -56,6 +59,11 @@ class _BiensScreenState extends State<BiensScreen> {
         ),
         title: Text(AppLocalizations.of(context).myProperties, style: TextStyle(color: context.cText, fontSize: 18, fontWeight: FontWeight.w800)),
         actions: [
+          IconButton(
+            tooltip: AppLocalizations.of(context).adMine,
+            icon: const Icon(Icons.campaign_outlined, color: AppColors.blue),
+            onPressed: () => Navigator.push(context, slideRoute(const MesAnnoncesScreen())),
+          ),
           IconButton(
             tooltip: AppLocalizations.of(context).propertyShort,
             icon: const Icon(Icons.add_rounded, color: AppColors.blue),
@@ -181,6 +189,21 @@ class _BienDetailScreenState extends State<BienDetailScreen> {
     if (cree != null) _fetch();
   }
 
+  /// Crée un brouillon d'annonce pré-rempli depuis l'unité vacante et ouvre l'éditeur.
+  Future<void> _publierDepuisUnite(UniteLogement u) async {
+    final annonce = await AnnonceService().depuisUnite(u.id);
+    if (annonce == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(AppLocalizations.of(context).saveFailed)));
+      }
+      return;
+    }
+    if (!mounted) return;
+    await Navigator.push(context, slideRoute(AddEditAnnonceScreen(annonce: annonce)));
+    _fetch();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -216,7 +239,8 @@ class _BienDetailScreenState extends State<BienDetailScreen> {
                       itemBuilder: (_, i) {
                         final u = _unites[i];
                         final occ = u.estOccupee;
-                        return Container(
+                        final tr = AppLocalizations.of(context);
+                        final tuile = Container(
                           margin: const EdgeInsets.only(bottom: 10),
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
@@ -224,31 +248,50 @@ class _BienDetailScreenState extends State<BienDetailScreen> {
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(color: context.cBorder),
                           ),
-                          child: Row(children: [
-                            Icon(occ ? Icons.person_rounded : Icons.meeting_room_outlined,
-                                color: occ ? AppColors.success : context.cHint),
-                            const SizedBox(width: 12),
-                            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text(u.numero, style: TextStyle(fontWeight: FontWeight.w700, color: context.cText)),
-                              Text(u.locataireNom ?? AppLocalizations.of(context).vacant, style: TextStyle(fontSize: 12, color: context.cTextSub)),
-                            ])),
-                            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                              Text('${formatMontant(u.loyerStandard)} F',
-                                  style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.blue)),
-                              Container(
-                                margin: const EdgeInsets.only(top: 4),
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: occ ? context.cSuccessBg : context.cBorder,
-                                  borderRadius: BorderRadius.circular(8),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Row(children: [
+                              Icon(occ ? Icons.person_rounded : Icons.meeting_room_outlined,
+                                  color: occ ? AppColors.success : context.cHint),
+                              const SizedBox(width: 12),
+                              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text(u.numero, style: TextStyle(fontWeight: FontWeight.w700, color: context.cText)),
+                                Text(u.locataireNom ?? tr.vacant, style: TextStyle(fontSize: 12, color: context.cTextSub)),
+                              ])),
+                              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                                Text('${formatMontant(u.loyerStandard)} F',
+                                    style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.blue)),
+                                Container(
+                                  margin: const EdgeInsets.only(top: 4),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: occ ? context.cSuccessBg : context.cBorder,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(occ ? tr.occupied : tr.vacant,
+                                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600,
+                                          color: occ ? AppColors.success : context.cTextSub)),
                                 ),
-                                child: Text(occ ? AppLocalizations.of(context).occupied : AppLocalizations.of(context).vacant,
-                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600,
-                                        color: occ ? AppColors.success : context.cTextSub)),
-                              ),
+                              ]),
                             ]),
+                            // Unité vacante → raccourci « Publier une annonce ».
+                            if (!occ) ...[
+                              const SizedBox(height: 10),
+                              Divider(height: 1, color: context.cBorder),
+                              const SizedBox(height: 8),
+                              Row(children: [
+                                const Icon(Icons.campaign_outlined, size: 16, color: AppColors.blue),
+                                const SizedBox(width: 6),
+                                Text(tr.adPublishFrom,
+                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.blue)),
+                                const Spacer(),
+                                const Icon(Icons.chevron_right_rounded, size: 16, color: AppColors.blue),
+                              ]),
+                            ],
                           ]),
                         );
+                        return occ
+                            ? tuile
+                            : GestureDetector(onTap: () => _publierDepuisUnite(u), child: tuile);
                       },
                     ),
             ),
