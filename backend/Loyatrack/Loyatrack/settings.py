@@ -285,6 +285,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'abonnements.tasks.rappels_expiration',
         'schedule': crontab(hour=8, minute=30),
     },
+    'expirer-annonces': {
+        'task': 'annonces.tasks.expirer_annonces',
+        'schedule': crontab(hour=0, minute=50),  # après le recalcul des statuts
+    },
 }
 
 # Abonnements — prestataire de paiement (agnostique). 'fake' en dev ; 'cinetpay' en prod.
