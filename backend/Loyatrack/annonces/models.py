@@ -5,6 +5,7 @@ la logique métier riche (auto-checks de publication, strip des numéros,
 synchro d'occupation, tâches) est ajoutée à l'étape 2 (`services.py`/`tasks.py`).
 """
 import uuid
+from datetime import timedelta
 
 from django.conf import settings
 from django.db import models
@@ -212,3 +213,96 @@ class PhotoAnnonce(models.Model):
 
     def __str__(self):
         return f"Photo #{self.ordre} — {self.annonce.reference}"
+
+
+# ── Messagerie chercheur ↔ bailleur (Palier 3) ───────────────────────────────
+# Durée de confiance d'un numéro vérifié : pas de re-OTP par contact (coût SMS).
+DELAI_CONFIANCE_CHERCHEUR = timedelta(days=30)
+
+
+class Chercheur(models.Model):
+    """Personne cherchant un logement (identité légère, distincte du bailleur).
+
+    Vérifiée une seule fois par OTP (téléphone), de confiance ensuite pendant
+    `DELAI_CONFIANCE_CHERCHEUR`. Voir LOYATRACK_MARKETPLACE_PLAN.md §4.1.
+    """
+    telephone = models.CharField(max_length=20, unique=True)
+    nom = models.CharField(max_length=100, blank=True)
+    google_sub = models.CharField(max_length=255, blank=True)  # Google Sign-In optionnel
+
+    # OTP (haché, jamais en clair) — vérification unique du numéro.
+    otp_hash = models.CharField(max_length=128, blank=True)
+    otp_expire = models.DateTimeField(null=True, blank=True)
+    otp_tentatives = models.PositiveSmallIntegerField(default=0)
+    verifie_le = models.DateTimeField(null=True, blank=True)
+
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.nom or self.telephone
+
+    @property
+    def est_verifie(self):
+        return (self.verifie_le is not None
+                and self.verifie_le > timezone.now() - DELAI_CONFIANCE_CHERCHEUR)
+
+
+class Conversation(models.Model):
+    """Fil de discussion entre un chercheur et le bailleur d'une annonce."""
+    STATUT_CHOICES = (
+        ('ouverte', 'Ouverte'),
+        ('archivee', 'Archivée'),
+        ('bloquee', 'Bloquée'),
+    )
+    annonce = models.ForeignKey(Annonce, on_delete=models.CASCADE, related_name='conversations')
+    chercheur = models.ForeignKey(Chercheur, on_delete=models.CASCADE, related_name='conversations')
+    # Dénormalisé depuis annonce.bailleur pour le scoping côté app.
+    bailleur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='conversations_annonces')
+    # Jeton d'accès web du chercheur (consulter le fil sans compte).
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    statut = models.CharField(max_length=10, choices=STATUT_CHOICES, default='ouverte')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_dernier_message = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ['-date_dernier_message', '-id']
+        unique_together = (('annonce', 'chercheur'),)
+
+    def __str__(self):
+        return f"Conversation {self.chercheur} · {self.annonce.reference}"
+
+
+class Message(models.Model):
+    """Message d'une conversation. Les numéros de téléphone y sont masqués."""
+    EXPEDITEUR_CHOICES = (('chercheur', 'Chercheur'), ('bailleur', 'Bailleur'))
+    conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='messages')
+    expediteur = models.CharField(max_length=10, choices=EXPEDITEUR_CHOICES)
+    corps = models.TextField()
+    lu = models.BooleanField(default=False)
+    date_envoi = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['date_envoi', 'id']
+
+    def __str__(self):
+        return f"{self.expediteur}: {self.corps[:40]}"
+
+
+class Signalement(models.Model):
+    """Signalement d'une annonce ou d'une conversation (modération anti-arnaque)."""
+    annonce = models.ForeignKey(
+        Annonce, on_delete=models.CASCADE, null=True, blank=True, related_name='signalements')
+    conversation = models.ForeignKey(
+        Conversation, on_delete=models.CASCADE, null=True, blank=True, related_name='signalements')
+    chercheur = models.ForeignKey(
+        Chercheur, on_delete=models.SET_NULL, null=True, blank=True, related_name='signalements')
+    motif = models.TextField()
+    traite = models.BooleanField(default=False)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f"Signalement #{self.pk} ({'traité' if self.traite else 'ouvert'})"

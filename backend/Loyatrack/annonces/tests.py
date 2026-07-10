@@ -14,7 +14,14 @@ from biens.models import Propriete, UniteLogement
 from locataires.models import Locataire
 
 from . import services
-from .models import Ville, Quartier, Annonce, PhotoAnnonce
+from . import messagerie
+from .messagerie import (
+    envoyer_otp_chercheur, verifier_otp_chercheur, demarrer_conversation, repondre,
+    MessagerieError,
+)
+from .models import (
+    Ville, Quartier, Annonce, PhotoAnnonce, Chercheur, Conversation, Message,
+)
 from .tasks import expirer_annonces
 
 User = get_user_model()
@@ -330,3 +337,65 @@ class AnnoncesListeTests(TestCase):
         self.assertIn('/logements/louer/douala/', html)
         self.assertIn('/logements/louer/douala/bonamoussadi/', html)
         self.assertIn(self.annonce.slug, html)
+
+
+@override_settings(DEBUG=True)  # nécessaire pour récupérer le dev_code de l'OTP
+class MessagerieTests(TestCase):
+    def setUp(self):
+        self.bailleur = User.objects.create_user(email='b@test.cm', password='x')
+        self.ville = Ville.objects.create(nom='Douala', slug='douala')
+        self.annonce = Annonce.objects.create(
+            bailleur=self.bailleur, ville=self.ville, titre='Bel appart',
+            type_bien='appartement', loyer=Decimal('120000'))
+
+    def _chercheur_verifie(self, tel='650000000'):
+        ch, extra = envoyer_otp_chercheur(tel, nom='Ali')
+        self.assertTrue(verifier_otp_chercheur(ch, extra['dev_code']))
+        ch.refresh_from_db()
+        return ch
+
+    def test_otp_envoi_et_verification(self):
+        ch, extra = envoyer_otp_chercheur('650000001', nom='Ali')
+        self.assertIn('dev_code', extra)          # DEBUG
+        self.assertFalse(ch.est_verifie)
+        self.assertFalse(verifier_otp_chercheur(ch, '000000'))  # mauvais code
+        self.assertTrue(verifier_otp_chercheur(ch, extra['dev_code']))
+        ch.refresh_from_db()
+        self.assertTrue(ch.est_verifie)
+
+    def test_otp_antispam(self):
+        envoyer_otp_chercheur('650000002')
+        with self.assertRaises(MessagerieError):
+            envoyer_otp_chercheur('650000002')  # < 60 s → bloqué
+
+    def test_contact_exige_verification(self):
+        ch = Chercheur.objects.create(telephone='650000003')  # non vérifié
+        with self.assertRaises(MessagerieError):
+            demarrer_conversation(self.annonce, ch, 'Bonjour')
+
+    def test_demarrer_conversation_notifie_bailleur_et_masque_numero(self):
+        from locataires.models import Notification
+        ch = self._chercheur_verifie()
+        conv = demarrer_conversation(self.annonce, ch, 'Dispo ? Appelez 690112233')
+        self.assertEqual(conv.messages.count(), 1)
+        msg = conv.messages.first()
+        self.assertEqual(msg.expediteur, 'chercheur')
+        self.assertNotIn('690112233', msg.corps)          # numéro masqué
+        self.annonce.refresh_from_db()
+        self.assertEqual(self.annonce.nb_contacts, 1)
+        self.assertTrue(Notification.objects.filter(
+            bailleur=self.bailleur, type_notif='discussion').exists())
+
+    def test_conversation_unique_par_annonce_chercheur(self):
+        ch = self._chercheur_verifie()
+        c1 = demarrer_conversation(self.annonce, ch, 'Premier')
+        c2 = demarrer_conversation(self.annonce, ch, 'Deuxième')
+        self.assertEqual(c1.pk, c2.pk)                     # même conversation
+        self.assertEqual(c1.messages.count(), 2)
+
+    def test_repondre(self):
+        ch = self._chercheur_verifie()
+        conv = demarrer_conversation(self.annonce, ch, 'Bonjour')
+        repondre(conv, 'bailleur', 'Oui, disponible.')
+        self.assertEqual(conv.messages.count(), 2)
+        self.assertEqual(conv.messages.last().expediteur, 'bailleur')

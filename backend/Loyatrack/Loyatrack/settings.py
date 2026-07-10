@@ -313,3 +313,8 @@ TWILIO_ACCOUNT_SID = env('TWILIO_ACCOUNT_SID', default='')
 TWILIO_AUTH_TOKEN = env('TWILIO_AUTH_TOKEN', default='')
 TWILIO_NUMBER = env('TWILIO_NUMBER', default='')
 TWILIO_WHATSAPP_NUMBER = env('TWILIO_WHATSAPP_NUMBER', default='')
+
+# Base URL publique du site (ex. https://loyatrack.cm) — utilisée pour les liens
+# dans les SMS de la messagerie annonces (le chercheur consulte son fil via un
+# jeton). Vide en dev : le SMS de réponse omet alors le lien.
+SITE_BASE_URL = env('SITE_BASE_URL', default='')

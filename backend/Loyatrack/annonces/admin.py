@@ -1,6 +1,9 @@
 from django.contrib import admin
 
-from .models import Ville, Quartier, Annonce, PhotoAnnonce
+from .models import (
+    Ville, Quartier, Annonce, PhotoAnnonce,
+    Chercheur, Conversation, Message, Signalement,
+)
 
 
 @admin.register(Ville)
@@ -31,3 +34,28 @@ class AnnonceAdmin(admin.ModelAdmin):
     readonly_fields = ('reference', 'slug', 'nb_vues', 'nb_contacts',
                        'date_creation', 'date_maj')
     inlines = [PhotoAnnonceInline]
+
+
+@admin.register(Chercheur)
+class ChercheurAdmin(admin.ModelAdmin):
+    list_display = ('telephone', 'nom', 'verifie_le', 'date_creation')
+    search_fields = ('telephone', 'nom')
+
+
+class MessageInline(admin.TabularInline):
+    model = Message
+    extra = 0
+    readonly_fields = ('expediteur', 'corps', 'date_envoi')
+
+
+@admin.register(Conversation)
+class ConversationAdmin(admin.ModelAdmin):
+    list_display = ('id', 'annonce', 'chercheur', 'bailleur', 'statut', 'date_dernier_message')
+    list_filter = ('statut',)
+    inlines = [MessageInline]
+
+
+@admin.register(Signalement)
+class SignalementAdmin(admin.ModelAdmin):
+    list_display = ('id', 'annonce', 'conversation', 'traite', 'date_creation')
+    list_filter = ('traite',)
