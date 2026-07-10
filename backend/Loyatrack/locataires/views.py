@@ -313,18 +313,29 @@ class DashboardView(APIView):
             t=Coalesce(Sum(F('montant_loyer') + F('charges_mensuelles'), output_field=DEC), zero)
         )['t']
 
-        # Encaissé ce mois = Σ des paiements dont la date tombe dans le mois.
-        # NB (MVP) : basé sur date_paiement ; une avance versée un mois antérieur
-        # n'est pas recomptée ici — raffinement possible via un échéancier en V2.
+        # Encaissé ce mois = trésorerie réellement entrée ce mois civil (par
+        # date_paiement). La COUVERTURE par locataire (soldé / reste), elle, est
+        # calculée par période ci-dessous — une avance d'un mois antérieur y compte.
         paiements_mois = Paiement.objects.filter(
             locataire__bailleur=user, date_paiement__gte=debut_mois, date_paiement__lte=fin_mois
         )
         encaisse_mois = paiements_mois.aggregate(t=Coalesce(Sum('montant'), zero))['t']
 
-        # Montant déjà payé ce mois, par locataire — 1 seule requête agrégée.
-        paye_par_loc = {
+        # Couverture PAR PÉRIODE : un paiement couvre le mois courant si sa période
+        # de loyer le chevauche. Gère les avances versées un mois antérieur (sinon
+        # comptées à tort comme impayées → risque de re-réclamation).
+        couvrants = Paiement.objects.filter(
+            locataire__bailleur=user, periode_debut__lte=fin_mois, periode_fin__gte=debut_mois
+        )
+        # Locataires dont le mois est SOLDÉ (paiement complet/avance : reste_du = 0).
+        soldes_ids = set(
+            couvrants.filter(reste_du__lte=0).values_list('locataire_id', flat=True)
+        )
+        # Acomptes (paiements partiels) imputés au mois courant, par locataire.
+        acompte_par_loc = {
             row['locataire_id']: row['t']
-            for row in paiements_mois.values('locataire_id').annotate(t=Sum('montant'))
+            for row in couvrants.exclude(reste_du__lte=0)
+                                .values('locataire_id').annotate(t=Sum('montant'))
         }
 
         # Répartition + liste actionnable (calcul en mémoire, sans requête par item).
@@ -336,14 +347,17 @@ class DashboardView(APIView):
             'montant_loyer', 'charges_mensuelles', 'jour_echeance', 'langue_preferee'
         ):
             du = (l.montant_loyer or Decimal('0')) + (l.charges_mensuelles or Decimal('0'))
-            paye = paye_par_loc.get(l.id, Decimal('0'))
-            reste = du - paye
+            if l.id in soldes_ids:
+                a_jour += 1  # mois déjà soldé (paiement complet/avance le couvrant)
+                continue
+            acompte = acompte_par_loc.get(l.id, Decimal('0'))
+            reste = du - acompte
             if reste <= 0:
                 a_jour += 1
                 continue
             reste_a_encaisser += reste
             echu = today.day > (l.jour_echeance or 1)
-            if paye > 0:
+            if acompte > 0:
                 partiel += 1
             elif echu:
                 en_retard += 1
@@ -356,7 +370,7 @@ class DashboardView(APIView):
                 'telephone': l.telephone or '',
                 'montant_du': int(reste),
                 'jours_retard': max(0, today.day - l.jour_echeance) if echu else 0,
-                'partiel': paye > 0,
+                'partiel': acompte > 0,
             })
         # Les plus en retard d'abord (puis plus gros montant).
         a_encaisser.sort(key=lambda x: (-x['jours_retard'], -x['montant_du']))

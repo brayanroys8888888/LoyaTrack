@@ -15,48 +15,13 @@ def ajouter_mois(d, mois):
     return date(annee, m, jour)
 
 
-def appliquer_paiement(paiement):
-    """
-    Applique la logique métier d'un paiement enregistré :
-    - paiement partiel (montant < loyer) -> statut 'partiel', reste reporté, locataire non soldé
-    - paiement complet (montant == loyer) -> 'complet', locataire payé, pénalités clôturées
-    - paiement en avance (montant >= 2 x loyer) -> 'avance', N périodes couvertes
+def _fin_de_mois(d):
+    """Dernier jour du mois de la date d."""
+    return date(d.year, d.month, calendar.monthrange(d.year, d.month)[1])
 
-    La fonction renseigne periode_debut/periode_fin/nb_mois/statut/reste_du puis met à jour
-    le statut du locataire et clôture les pénalités actives si le loyer du mois est soldé.
-    """
-    locataire = paiement.locataire
-    loyer = locataire.montant_loyer
-    montant = paiement.montant
 
-    if not paiement.periode_debut:
-        dp = paiement.date_paiement
-        paiement.periode_debut = date(dp.year, dp.month, 1)
-
-    if loyer and montant < loyer:
-        # Paiement partiel : on ne solde pas le locataire
-        paiement.statut = 'partiel'
-        paiement.nb_mois = 1
-        paiement.periode_fin = paiement.periode_debut
-        paiement.reste_du = (loyer - montant).quantize(Decimal('0.01'))
-        paiement.save()
-        return paiement
-
-    # Paiement complet ou en avance
-    nb_mois = int(montant // loyer) if loyer else 1
-    nb_mois = max(nb_mois, 1)
-    paiement.nb_mois = nb_mois
-    paiement.statut = 'avance' if nb_mois > 1 else 'complet'
-    paiement.reste_du = Decimal('0')
-    # Dernier jour couvert : fin du dernier mois payé
-    dernier_mois = ajouter_mois(paiement.periode_debut, nb_mois - 1)
-    paiement.periode_fin = date(
-        dernier_mois.year, dernier_mois.month,
-        calendar.monthrange(dernier_mois.year, dernier_mois.month)[1],
-    )
-    paiement.save()
-
-    # Clôture des pénalités actives et remise à zéro
+def _solder_locataire(locataire):
+    """Clôture les pénalités actives et marque le locataire 'Payé' (idempotent)."""
     locataire.penalites.filter(statut='Active').update(
         statut='Clôturée', date_fin=timezone.now().date()
     )
@@ -64,16 +29,106 @@ def appliquer_paiement(paiement):
     if locataire.statut != 'Payé':
         locataire.statut = 'Payé'
     locataire.save()
+
+
+def appliquer_paiement(paiement):
+    """
+    Applique la logique métier d'un paiement enregistré, en raisonnant sur le
+    CUMUL du mois (un loyer peut être réglé en plusieurs versements : acompte
+    espèces + complément Mobile Money) et sur l'obligation réelle loyer+charges :
+
+    - mois pas encore couvert           -> statut 'partiel', reste reporté, locataire non soldé
+    - le cumul couvre le mois            -> 'complet', locataire soldé, pénalités clôturées
+    - versement >= 2 mois d'obligation   -> 'avance', N périodes couvertes
+
+    Renseigne periode_debut/periode_fin/nb_mois/statut/reste_du puis met à jour
+    le statut du locataire et clôture les pénalités actives si le mois est soldé.
+    """
+    from django.db.models import Sum
+    from .models import Paiement
+
+    locataire = paiement.locataire
+    loyer = locataire.montant_loyer
+    charges = locataire.charges_mensuelles or Decimal('0')
+    montant = paiement.montant
+    du_mensuel = (loyer + charges) if loyer else None
+
+    if not paiement.periode_debut:
+        dp = paiement.date_paiement
+        paiement.periode_debut = date(dp.year, dp.month, 1)
+
+    # Avance pluri-mensuelle : un seul versement couvrant >= 2 mois d'obligation.
+    if du_mensuel and montant >= 2 * du_mensuel:
+        nb_mois = int(montant // du_mensuel)
+        paiement.nb_mois = nb_mois
+        paiement.statut = 'avance'
+        paiement.reste_du = Decimal('0')
+        paiement.periode_fin = _fin_de_mois(ajouter_mois(paiement.periode_debut, nb_mois - 1))
+        paiement.save()
+        _solder_locataire(locataire)
+        return paiement
+
+    # Sinon : on additionne les versements déjà enregistrés pour ce même mois.
+    anterieurs = Paiement.objects.filter(
+        locataire=locataire, periode_debut=paiement.periode_debut,
+    ).exclude(pk=paiement.pk).aggregate(t=Sum('montant'))['t'] or Decimal('0')
+    cumul = anterieurs + montant
+
+    if du_mensuel and cumul < du_mensuel:
+        # Mois pas encore couvert : on ne solde pas le locataire.
+        paiement.statut = 'partiel'
+        paiement.nb_mois = 1
+        paiement.periode_fin = paiement.periode_debut
+        paiement.reste_du = (du_mensuel - cumul).quantize(Decimal('0.01'))
+        paiement.save()
+        return paiement
+
+    # Mois couvert (ou loyer non défini) : paiement soldant.
+    paiement.nb_mois = 1
+    paiement.statut = 'complet'
+    paiement.reste_du = Decimal('0')
+    paiement.periode_fin = _fin_de_mois(paiement.periode_debut)
+    paiement.save()
+    _solder_locataire(locataire)
     return paiement
+
+
+def montant_du_ce_mois(locataire, aujourd_hui=None):
+    """Reste à encaisser pour le locataire au titre du mois courant (>= 0).
+
+    Obligation du mois = loyer + charges. On raisonne sur la COUVERTURE PAR
+    PÉRIODE (pas la date d'encaissement) : un paiement soldant (reste_du = 0)
+    dont la période chevauche le mois solde entièrement celui-ci — y compris une
+    avance versée un mois antérieur. Sinon on déduit les acomptes du mois. Source
+    unique de vérité, alignée sur le cockpit du tableau de bord, pour ne jamais
+    réclamer plus que le solde réellement dû.
+    """
+    from django.db.models import Sum
+    from .models import Paiement
+
+    aujourd_hui = aujourd_hui or date.today()
+    debut_mois = aujourd_hui.replace(day=1)
+    fin_mois = _fin_de_mois(debut_mois)
+    du = (locataire.montant_loyer or Decimal('0')) + (locataire.charges_mensuelles or Decimal('0'))
+
+    couvrants = Paiement.objects.filter(
+        locataire=locataire, periode_debut__lte=fin_mois, periode_fin__gte=debut_mois,
+    )
+    if couvrants.filter(reste_du__lte=0).exists():
+        return Decimal('0')  # mois déjà soldé (paiement complet/avance le couvrant)
+    acompte = couvrants.aggregate(t=Sum('montant'))['t'] or Decimal('0')
+    reste = du - acompte
+    return reste if reste > Decimal('0') else Decimal('0')
 
 
 def creer_demande_paiement(locataire):
     """Crée une demande d'encaissement Mobile Money et renvoie l'objet + l'URL.
 
-    Montant = loyer + charges + frais (frais répercutés au locataire). La collecte
-    se fait sur le compte PLATEFORME LoyaTrack (settings.CINETPAY_*) ; le bailleur
-    doit avoir configuré son numéro de reversement. Lève ValueError sinon (hors
-    provider fake, utilisé en test).
+    Montant = solde restant dû ce mois (loyer + charges − déjà payé) + frais
+    (répercutés au locataire). La collecte se fait sur le compte PLATEFORME
+    LoyaTrack (settings.CINETPAY_*) ; le bailleur doit avoir configuré son numéro
+    de reversement. Lève ValueError('compte_marchand_non_configure') sinon (hors
+    provider fake), ou ValueError('rien_a_encaisser') si le mois est déjà soldé.
     """
     from django.conf import settings
     from abonnements.providers import get_provider
@@ -84,7 +139,10 @@ def creer_demande_paiement(locataire):
     if provider.nom != 'fake' and not (compte and compte.est_configure()):
         raise ValueError("compte_marchand_non_configure")
 
-    base = (locataire.montant_loyer or Decimal('0')) + (locataire.charges_mensuelles or Decimal('0'))
+    # On ne réclame que le solde réellement dû (jamais le loyer déjà encaissé).
+    base = montant_du_ce_mois(locataire)
+    if base <= 0:
+        raise ValueError("rien_a_encaisser")
     taux_frais = compte.frais_pourcentage if compte else Decimal('2.00')
     frais = (base * taux_frais / Decimal('100')).quantize(Decimal('1'))
     total = base + frais
@@ -125,23 +183,28 @@ def confirmer_demande_paiement(demande):
     with transaction.atomic():
         demande = DemandePaiement.objects.select_for_update().get(pk=demande.pk)
         if demande.statut == 'payee' and demande.paiement_id:
-            return demande.paiement  # déjà traité → idempotent (pas de double reversement)
-
-        paiement = Paiement.objects.create(
-            locataire=demande.locataire,
-            montant=demande.montant_loyer,
-            date_paiement=date.today(),
-            mode_paiement='Mobile Money',
-            reference=str(demande.reference_interne),
-        )
-        appliquer_paiement(paiement)
-        demande.paiement = paiement
-        demande.statut = 'payee'
-        demande.date_paiement = timezone.now()
-        demande.save(update_fields=['paiement', 'statut', 'date_paiement'])
+            # Déjà encaissé → on ne recrée pas le Paiement, mais on NE renvoie PAS
+            # tout de suite : le reversement ci-dessous doit rester rejouable tant
+            # qu'il n'a pas abouti (un rejeu du webhook relance un transfert échoué).
+            paiement = demande.paiement
+        else:
+            paiement = Paiement.objects.create(
+                locataire=demande.locataire,
+                montant=demande.montant_loyer,
+                date_paiement=date.today(),
+                mode_paiement='Mobile Money',
+                reference=str(demande.reference_interne),
+            )
+            appliquer_paiement(paiement)
+            demande.paiement = paiement
+            demande.statut = 'payee'
+            demande.date_paiement = timezone.now()
+            demande.save(update_fields=['paiement', 'statut', 'date_paiement'])
 
     # Reversement HORS transaction (appel réseau) : un échec ici n'annule pas le
-    # paiement déjà encaissé — il est tracé pour relance manuelle.
+    # paiement déjà encaissé. Idempotent (ne fait rien si déjà 'effectue'), donc
+    # chaque rejeu du webhook — et la tâche `relancer_reversements` — le relancent
+    # automatiquement tant que le loyer n'est pas parvenu au bailleur.
     _reverser_loyer(demande)
     return paiement
 
@@ -150,10 +213,20 @@ def _reverser_loyer(demande):
     """Reverse le loyer net (montant_loyer) sur le Mobile Money du bailleur.
 
     Le paiement reste valide même si le reversement échoue : on enregistre alors
-    `reversement_statut='echoue'` + le motif pour permettre une relance.
+    `reversement_statut='echoue'` + le motif. Idempotent (ne fait rien si déjà
+    'effectue'), il est rejoué automatiquement par la tâche
+    `relancer_reversements` et à chaque rejeu du webhook jusqu'à aboutir.
+
+    ⚠️ Limite connue : si le transfert a réussi côté prestataire mais que le
+    process a été tué avant l'enregistrement, un rejeu renvoie le même
+    `client_transaction_id` (dédupliqué côté prestataire) et peut retomber en
+    'echoue' — à raffiner via une vérification d'état du transfert (V2).
     """
     from abonnements.providers import get_provider
     from .models import DemandePaiement
+
+    if demande.reversement_statut == 'effectue':
+        return  # déjà reversé → idempotent (garde-fou contre un double transfert)
 
     compte = getattr(demande.locataire.bailleur, 'compte_marchand', None)
     if not (compte and compte.est_configure()):

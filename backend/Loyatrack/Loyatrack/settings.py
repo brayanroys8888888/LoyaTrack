@@ -284,6 +284,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'abonnements.tasks.rappels_expiration',
         'schedule': crontab(hour=8, minute=30),
     },
+    'relancer-reversements-loyer': {
+        'task': 'paiements.tasks.relancer_reversements',
+        'schedule': crontab(minute=15),  # toutes les heures : rattrape les reversements bloqués
+    },
 }
 
 # Abonnements — prestataire de paiement (agnostique). 'fake' en dev ; 'cinetpay' en prod.

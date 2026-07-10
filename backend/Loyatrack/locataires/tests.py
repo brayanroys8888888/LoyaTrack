@@ -174,6 +174,25 @@ class DashboardCockpitTests(TestCase):
         self.assertEqual(data['a_encaisser'][0]['montant_du'], 30000)
         self.assertTrue(data['a_encaisser'][0]['partiel'])
 
+    def test_avance_mois_anterieur_couvre_le_mois_courant(self):
+        """Une avance versée le mois dernier couvrant ce mois -> locataire à jour."""
+        from paiements.models import Paiement
+        from paiements.services import appliquer_paiement
+        l = _locataire(self.b, charges_mensuelles=Decimal('10000'), jour_echeance=5)  # dû 60000
+        # Avance de 2 mois (120000) versée le 1er du mois dernier -> couvre ce mois.
+        mois_dernier = (timezone.localdate().replace(day=1) - timedelta(days=1)).replace(day=1)
+        p = appliquer_paiement(Paiement.objects.create(
+            locataire=l, montant=Decimal('120000'),
+            date_paiement=mois_dernier, mode_paiement='Mobile Money'))
+        self.assertEqual(p.statut, 'avance')  # période s'étend jusqu'à ce mois
+
+        data = self._dashboard()
+        # Aucune trésorerie encaissée CE mois-ci, mais le mois est couvert.
+        self.assertEqual(data['encaisse_mois'], 0)
+        self.assertEqual(data['reste_a_encaisser'], 0)
+        self.assertEqual(data['repartition']['a_jour'], 1)
+        self.assertNotIn(l.id, [x['locataire_id'] for x in data['a_encaisser']])
+
     def test_locataire_non_encore_facturable_exclu(self):
         # Facturation démarrant le mois prochain → hors attendu de ce mois.
         futur = (timezone.localdate().replace(day=1) + timedelta(days=40)).replace(day=1)

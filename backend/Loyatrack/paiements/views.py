@@ -1,3 +1,5 @@
+import uuid
+
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -109,9 +111,13 @@ class DemandePaiementViewSet(viewsets.ModelViewSet):
         locataire = serializer.validated_data['locataire']
         try:
             demande = creer_demande_paiement(locataire)
-        except ValueError:
+        except ValueError as e:
+            messages = {
+                'compte_marchand_non_configure': "Configurez d'abord votre compte marchand (Réglages).",
+                'rien_a_encaisser': "Ce locataire est déjà à jour pour ce mois.",
+            }
             return Response(
-                {'error': "Configurez d'abord votre compte marchand (Réglages)."},
+                {'error': messages.get(str(e), "Demande d'encaissement impossible.")},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         except Exception as e:
@@ -151,6 +157,14 @@ class WebhookLoyerView(APIView):
         reference = data.get('cpm_trans_id') or data.get('transaction_id') or data.get('reference')
         if not reference:
             return Response({'error': 'Référence manquante'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # `reference_interne` est un UUIDField : filtrer avec une valeur non-UUID
+        # (bot, scanner, retry mal formé) lèverait ValueError → 500. On la parse
+        # d'abord ; une référence invalide ne correspond à aucune demande → 404.
+        try:
+            reference = uuid.UUID(str(reference))
+        except (ValueError, AttributeError, TypeError):
+            return Response({'error': 'Demande introuvable'}, status=status.HTTP_404_NOT_FOUND)
 
         demande = DemandePaiement.objects.filter(reference_interne=reference).select_related(
             'locataire__bailleur').first()

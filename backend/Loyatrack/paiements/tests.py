@@ -57,6 +57,22 @@ class PaiementServiceTests(TestCase):
         pdf = generer_quittance_pdf(p)
         self.assertTrue(pdf.startswith(b'%PDF'))
 
+    def test_paiement_en_deux_fois_solde_le_mois(self):
+        """Acompte puis complément le même mois -> 2e paiement 'complet', locataire soldé."""
+        self.loc.charges_mensuelles = Decimal('10000')  # dû = 50000 + 10000 = 60000
+        self.loc.save(update_fields=['charges_mensuelles'])
+        p1 = self._paiement(20000)
+        self.assertEqual(p1.statut, 'partiel')
+        self.assertEqual(p1.reste_du, Decimal('40000.00'))
+        self.loc.refresh_from_db()
+        self.assertNotEqual(self.loc.statut, 'Payé')  # mois pas encore couvert
+
+        p2 = self._paiement(40000)  # 20000 + 40000 = 60000 -> mois soldé
+        self.assertEqual(p2.statut, 'complet')
+        self.assertEqual(p2.reste_du, Decimal('0'))
+        self.loc.refresh_from_db()
+        self.assertEqual(self.loc.statut, 'Payé')
+
 
 class EncaissementLoyerTests(TestCase):
     """Encaissement Mobile Money : demande → webhook → Paiement (provider fake)."""
@@ -86,6 +102,44 @@ class EncaissementLoyerTests(TestCase):
         self.assertEqual(d.statut, 'en_attente')
         self.assertTrue(d.url_paiement)  # URL fake renseignée
 
+    def test_demande_deduit_paiement_deja_fait(self):
+        """La demande ne facture que le solde restant (déduit un acompte du mois)."""
+        from .models import Paiement
+        from .services import creer_demande_paiement, appliquer_paiement
+        appliquer_paiement(Paiement.objects.create(
+            locataire=self.loc, montant=Decimal('20000'),
+            date_paiement=date.today(), mode_paiement='Espèces'))
+        d = creer_demande_paiement(self.loc)
+        # Reste = 60000 - 20000 = 40000 ; frais 2% = 800 ; total = 40800.
+        self.assertEqual(d.montant_loyer, Decimal('40000'))
+        self.assertEqual(d.frais, Decimal('800'))
+        self.assertEqual(d.montant, Decimal('40800'))
+
+    def test_encaissement_apres_acompte_ne_double_facture_pas(self):
+        """Acompte espèces + encaissement MoMo = obligation exacte, sans surfacturation."""
+        from django.db.models import Sum
+        from .models import Paiement
+        from .services import creer_demande_paiement, appliquer_paiement
+        appliquer_paiement(Paiement.objects.create(
+            locataire=self.loc, montant=Decimal('20000'),
+            date_paiement=date.today(), mode_paiement='Espèces'))
+        d = creer_demande_paiement(self.loc)
+        self._webhook(str(d.reference_interne))
+        self.loc.refresh_from_db()
+        self.assertEqual(self.loc.statut, 'Payé')
+        total = Paiement.objects.filter(locataire=self.loc).aggregate(t=Sum('montant'))['t']
+        self.assertEqual(total, Decimal('60000'))  # 20000 + 40000, pas 20000 + 60000
+
+    def test_demande_rien_a_encaisser_si_deja_solde(self):
+        """Un locataire déjà à jour pour le mois ne peut pas être re-sollicité."""
+        from .models import Paiement
+        from .services import creer_demande_paiement, appliquer_paiement
+        appliquer_paiement(Paiement.objects.create(
+            locataire=self.loc, montant=Decimal('60000'),
+            date_paiement=date.today(), mode_paiement='Espèces'))
+        with self.assertRaises(ValueError):
+            creer_demande_paiement(self.loc)
+
     def test_webhook_confirme_cree_paiement_et_solde_locataire(self):
         from .services import creer_demande_paiement
         d = creer_demande_paiement(self.loc)
@@ -112,6 +166,11 @@ class EncaissementLoyerTests(TestCase):
         resp = self._webhook(str(uuid.uuid4()))
         self.assertEqual(resp.status_code, 404)
 
+    def test_webhook_reference_malformee_404_pas_500(self):
+        """Une référence non-UUID (bot/scanner) renvoie 404, jamais une 500."""
+        resp = self._webhook('pas-un-uuid')
+        self.assertEqual(resp.status_code, 404)
+
     def test_reversement_immediat_vers_bailleur(self):
         """Bailleur avec numéro de reversement configuré → transfert immédiat."""
         from .models import CompteMarchand
@@ -131,3 +190,34 @@ class EncaissementLoyerTests(TestCase):
         self._webhook(str(d.reference_interne))
         d.refresh_from_db()
         self.assertEqual(d.reversement_statut, 'non_requis')
+
+    def test_relance_reversement_bloque(self):
+        """Un reversement bloqué en 'echoue' est rejoué et repasse 'effectue'."""
+        from .models import CompteMarchand, DemandePaiement
+        from .services import creer_demande_paiement
+        from .tasks import relancer_reversements
+        CompteMarchand.objects.create(
+            bailleur=self.bailleur, numero_momo='690123456', operateur='mtn', actif=True)
+        d = creer_demande_paiement(self.loc)
+        self._webhook(str(d.reference_interne))
+        # Simule un transfert antérieur resté bloqué (échec réseau / worker tué).
+        DemandePaiement.objects.filter(pk=d.pk).update(reversement_statut='echoue')
+        relancer_reversements()
+        d.refresh_from_db()
+        self.assertEqual(d.reversement_statut, 'effectue')  # provider fake → succès
+
+    def test_relance_ne_retransfere_pas_si_deja_effectue(self):
+        """Idempotence : relancer une demande déjà reversée ne change rien."""
+        from .models import CompteMarchand
+        from .services import creer_demande_paiement
+        from .tasks import relancer_reversements
+        CompteMarchand.objects.create(
+            bailleur=self.bailleur, numero_momo='690123456', operateur='mtn', actif=True)
+        d = creer_demande_paiement(self.loc)
+        self._webhook(str(d.reference_interne))
+        d.refresh_from_db()
+        self.assertEqual(d.reversement_statut, 'effectue')
+        ref_initiale = d.reversement_ref
+        relancer_reversements()  # 'effectue' n'est pas ciblé → aucun re-transfert
+        d.refresh_from_db()
+        self.assertEqual(d.reversement_ref, ref_initiale)
