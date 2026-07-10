@@ -9,11 +9,15 @@ import json
 from django.core.paginator import Paginator
 from django.db.models import Avg, Count, F, Q
 from django.http import Http404, HttpResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.utils import timezone
 
-from .models import Annonce, Ville, Quartier
+from .models import Annonce, Ville, Quartier, Chercheur, Conversation, Signalement
+from .messagerie import (
+    envoyer_otp_chercheur, verifier_otp_chercheur, demarrer_conversation,
+    repondre, MessagerieError,
+)
 
 _TYPES = dict(Annonce.TYPE_CHOICES)
 # Libellés pluriels FR pour les titres des pages de liste.
@@ -40,6 +44,14 @@ def _publiees():
 
 def _jsonld(data):
     return json.dumps(data, ensure_ascii=False).replace('<', '\\u003c')
+
+
+def _annonce_publiee(slug):
+    """Une annonce publiée non expirée, ou None."""
+    return (Annonce.objects
+            .filter(slug=slug, statut='publiee', date_expiration__gt=timezone.now())
+            .select_related('ville', 'quartier', 'bailleur')
+            .prefetch_related('photos').first())
 
 
 def annonce_publique(request, slug):
@@ -295,3 +307,99 @@ def robots_txt(request):
         f'Sitemap: {sitemap}',
     ]
     return HttpResponse('\n'.join(lignes) + '\n', content_type='text/plain')
+
+
+# ── Messagerie côté chercheur (web SSR) ──────────────────────────────────────
+def contacter(request, slug):
+    """Parcours de contact du chercheur : téléphone → OTP → message.
+
+    Piloté par la session ; si le numéro est déjà vérifié (< 30 j), l'OTP est
+    sauté. Ouvre une conversation puis redirige vers le fil (jeton).
+    """
+    annonce = _annonce_publiee(slug)
+    if annonce is None:
+        return render(request, 'annonces/introuvable.html', status=404)
+
+    etape, erreur, dev_code = 'phone', None, None
+    if request.method == 'POST':
+        action = request.POST.get('etape')
+        if action == 'phone':
+            tel = request.POST.get('telephone', '').strip()
+            nom = request.POST.get('nom', '').strip()
+            if not tel:
+                erreur = "Indiquez votre numéro de téléphone."
+            else:
+                ch, _ = Chercheur.objects.get_or_create(telephone=tel, defaults={'nom': nom})
+                if nom and not ch.nom:
+                    ch.nom = nom
+                    ch.save(update_fields=['nom'])
+                if ch.est_verifie:
+                    request.session['chercheur_id'] = ch.id
+                    etape = 'message'
+                else:
+                    try:
+                        ch, extra = envoyer_otp_chercheur(tel, nom)
+                    except MessagerieError as e:
+                        erreur = str(e)
+                    else:
+                        request.session['chercheur_pending'] = ch.id
+                        etape, dev_code = 'otp', extra.get('dev_code')
+        elif action == 'otp':
+            ch = Chercheur.objects.filter(id=request.session.get('chercheur_pending')).first()
+            if ch and verifier_otp_chercheur(ch, request.POST.get('code', '').strip()):
+                request.session['chercheur_id'] = ch.id
+                etape = 'message'
+            else:
+                erreur, etape = "Code invalide ou expiré.", 'otp'
+        elif action == 'message':
+            ch = Chercheur.objects.filter(id=request.session.get('chercheur_id')).first()
+            corps = request.POST.get('corps', '').strip()
+            if ch and ch.est_verifie and corps:
+                try:
+                    conv = demarrer_conversation(annonce, ch, corps)
+                    return redirect(f'/logements/messages/{conv.token}/')
+                except MessagerieError as e:
+                    erreur, etape = str(e), 'message'
+            else:
+                erreur, etape = "Écrivez un message.", 'message'
+    else:
+        ch = Chercheur.objects.filter(id=request.session.get('chercheur_id')).first()
+        if ch and ch.est_verifie:
+            etape = 'message'
+
+    return render(request, 'annonces/contacter.html', {
+        'annonce': annonce, 'etape': etape, 'erreur': erreur, 'dev_code': dev_code,
+        'message_defaut': (f"Bonjour, ce logement (« {annonce.titre} ») est-il "
+                           "toujours disponible ? Quand puis-je le visiter ?"),
+        'canonical': request.build_absolute_uri(request.path),
+    })
+
+
+def fil_messages(request, token):
+    """Fil de discussion du chercheur (accès par jeton, sans compte)."""
+    conv = (Conversation.objects.filter(token=token)
+            .select_related('annonce', 'chercheur').first())
+    if conv is None:
+        return render(request, 'annonces/introuvable.html', status=404)
+    if request.method == 'POST':
+        corps = request.POST.get('corps', '').strip()
+        if corps and conv.statut == 'ouverte':
+            repondre(conv, 'chercheur', corps)
+        return redirect(f'/logements/messages/{conv.token}/')
+    return render(request, 'annonces/fil.html', {
+        'conv': conv, 'annonce': conv.annonce, 'messages': conv.messages.all(),
+    })
+
+
+def signaler(request, slug):
+    """Signalement d'une annonce par un visiteur (modération anti-arnaque)."""
+    annonce = _annonce_publiee(slug)
+    if annonce is None:
+        return render(request, 'annonces/introuvable.html', status=404)
+    envoye = False
+    if request.method == 'POST':
+        motif = request.POST.get('motif', '').strip()
+        if motif:
+            Signalement.objects.create(annonce=annonce, motif=motif[:2000])
+            envoye = True
+    return render(request, 'annonces/signaler.html', {'annonce': annonce, 'envoye': envoye})

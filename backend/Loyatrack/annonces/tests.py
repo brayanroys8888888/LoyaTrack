@@ -21,6 +21,7 @@ from .messagerie import (
 )
 from .models import (
     Ville, Quartier, Annonce, PhotoAnnonce, Chercheur, Conversation, Message,
+    Signalement,
 )
 from .tasks import expirer_annonces
 
@@ -399,3 +400,64 @@ class MessagerieTests(TestCase):
         repondre(conv, 'bailleur', 'Oui, disponible.')
         self.assertEqual(conv.messages.count(), 2)
         self.assertEqual(conv.messages.last().expediteur, 'bailleur')
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp(), DEBUG=True)
+class MessagerieWebTests(TestCase):
+    def setUp(self):
+        self.bailleur = User.objects.create_user(email='b@test.cm', password='x')
+        self.ville = Ville.objects.create(nom='Douala', slug='douala')
+        self.annonce = Annonce.objects.create(
+            bailleur=self.bailleur, ville=self.ville, titre='Bel appart',
+            type_bien='appartement', loyer=Decimal('120000'), description='Joli.')
+        PhotoAnnonce.objects.create(
+            annonce=self.annonce, est_couverture=True,
+            image=SimpleUploadedFile('p.jpg', _JPEG, content_type='image/jpeg'))
+        services.publier(self.annonce)
+        self.annonce.refresh_from_db()
+        self.url = f'/logements/annonce/{self.annonce.slug}/contacter/'
+
+    def test_cta_active_sur_detail(self):
+        html = self.client.get(f'/logements/annonce/{self.annonce.slug}/').content.decode()
+        self.assertIn(f'/logements/annonce/{self.annonce.slug}/contacter/', html)
+        self.assertIn('/signaler/', html)
+
+    def test_parcours_contact_complet(self):
+        # 1) téléphone → étape OTP (dev_code exposé en DEBUG)
+        r = self.client.post(self.url, {'etape': 'phone', 'telephone': '650000010', 'nom': 'Ali'})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.context['etape'], 'otp')
+        code = r.context['dev_code']
+        self.assertTrue(code)
+        # 2) OTP → étape message
+        r = self.client.post(self.url, {'etape': 'otp', 'code': code})
+        self.assertEqual(r.context['etape'], 'message')
+        # 3) message → redirection vers le fil + conversation créée
+        r = self.client.post(self.url, {'etape': 'message', 'corps': 'Dispo ? 690112233'})
+        self.assertEqual(r.status_code, 302)
+        self.assertIn('/logements/messages/', r['Location'])
+        self.assertEqual(Conversation.objects.count(), 1)
+        conv = Conversation.objects.first()
+        self.assertNotIn('690112233', conv.messages.first().corps)  # numéro masqué
+
+    def test_numero_deja_verifie_saute_otp(self):
+        Chercheur.objects.create(telephone='650000011', verifie_le=timezone.now())
+        r = self.client.post(self.url, {'etape': 'phone', 'telephone': '650000011'})
+        self.assertEqual(r.context['etape'], 'message')  # OTP sauté
+
+    def test_fil_et_reponse_chercheur(self):
+        ch = Chercheur.objects.create(telephone='650000012', verifie_le=timezone.now())
+        conv = demarrer_conversation(self.annonce, ch, 'Bonjour')
+        url = f'/logements/messages/{conv.token}/'
+        self.assertEqual(self.client.get(url).status_code, 200)
+        r = self.client.post(url, {'corps': 'Je peux visiter demain ?'})
+        self.assertEqual(r.status_code, 302)
+        conv.refresh_from_db()
+        self.assertEqual(conv.messages.count(), 2)
+
+    def test_signaler(self):
+        url = f'/logements/annonce/{self.annonce.slug}/signaler/'
+        r = self.client.post(url, {'motif': 'Logement déjà loué'})
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.context['envoye'])
+        self.assertEqual(Signalement.objects.filter(annonce=self.annonce).count(), 1)

@@ -7,6 +7,9 @@ web_urlpatterns = [
     path('logements/', public_views.accueil, name='annonces_accueil'),
     path('logements/recherche/', public_views.recherche, name='annonces_recherche'),
     path('logements/annonce/<slug:slug>/', public_views.annonce_publique, name='annonce_publique'),
+    path('logements/annonce/<slug:slug>/contacter/', public_views.contacter, name='annonces_contacter'),
+    path('logements/annonce/<slug:slug>/signaler/', public_views.signaler, name='annonces_signaler'),
+    path('logements/messages/<uuid:token>/', public_views.fil_messages, name='annonces_fil'),
     path('logements/sitemap.xml', public_views.sitemap_annonces, name='annonces_sitemap'),
 
     # Pages de localisation SEO. Ordre important : le combo « type-N-chambres »

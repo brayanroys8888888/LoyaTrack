@@ -39,7 +39,8 @@
     .spec b { display:block; font-size:16px; }
     .desc { white-space: pre-line; font-size:15px; line-height:1.5; color:#2a3346; }
     .avert { background:#fff8e1; border:1px solid #ffe0a3; color:#7a5b00; border-radius:12px; padding:12px 14px; font-size:13px; margin-top:16px; }
-    .cta { display:block; width:100%; text-align:center; padding:14px; border-radius:12px; border:none; font-size:15px; font-weight:700; margin-top:16px; background:#c9d2dc; color:#fff; cursor:not-allowed; }
+    .cta { display:block; width:100%; text-align:center; padding:14px; border-radius:12px; border:none; font-size:15px; font-weight:700; margin-top:16px; background:#1565C0; color:#fff; text-decoration:none; cursor:pointer; }
+    .signaler { display:block; text-align:center; color:#9aa5b1; font-size:12px; margin-top:12px; text-decoration:none; }
     .foot { text-align:center; color:#9aa5b1; font-size:12px; padding:24px 0; }
   </style>
 </head>
@@ -82,8 +83,8 @@
       Loyatrack ne collecte aucun paiement pour une location trouvée ici.
     </div>
 
-    <!-- Contact = Palier 3 (messagerie). Désactivé pour l'instant. -->
-    <button class="cta" disabled>Contacter le bailleur — bientôt disponible</button>
+    <a class="cta" href="/logements/annonce/{{ annonce.slug }}/contacter/">Contacter le bailleur</a>
+    <a class="signaler" href="/logements/annonce/{{ annonce.slug }}/signaler/">⚑ Signaler cette annonce</a>
 
     <div class="foot">Réf. {{ annonce.reference }} · Loyatrack</div>
   </div>
