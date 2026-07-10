@@ -211,3 +211,55 @@ class AnnonceAPITests(TestCase):
         self.assertEqual(r.status_code, 404)
         r = self.client.post(f'/api/v1/annonces/{a.id}/publier/')
         self.assertEqual(r.status_code, 404)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class AnnoncePubliqueTests(TestCase):
+    def setUp(self):
+        self.bailleur = User.objects.create_user(email='b@test.cm', password='x')
+        self.ville = Ville.objects.create(nom='Douala', slug='douala')
+        self.quartier = Quartier.objects.create(
+            ville=self.ville, nom='Bonamoussadi', slug='bonamoussadi')
+        self.annonce = Annonce.objects.create(
+            bailleur=self.bailleur, ville=self.ville, quartier=self.quartier,
+            titre='Bel appart', type_bien='appartement', nb_chambres=2,
+            loyer=Decimal('120000'), description='Joli logement.')
+        PhotoAnnonce.objects.create(
+            annonce=self.annonce, est_couverture=True,
+            image=SimpleUploadedFile('p.jpg', _JPEG, content_type='image/jpeg'))
+        services.publier(self.annonce)
+        self.annonce.refresh_from_db()
+
+    def test_page_publique_ok_seo(self):
+        r = self.client.get(f'/logements/annonce/{self.annonce.slug}/')
+        self.assertEqual(r.status_code, 200)
+        html = r.content.decode()
+        self.assertIn('RealEstateListing', html)          # JSON-LD
+        self.assertIn('property="og:image"', html)        # aperçu partage
+        self.assertIn('rel="canonical"', html)
+        self.assertIn('120 000 FCFA', html)               # prix formaté
+
+    def test_brouillon_et_expiree_404(self):
+        brouillon = Annonce.objects.create(
+            bailleur=self.bailleur, ville=self.ville, titre='X')
+        self.assertEqual(
+            self.client.get(f'/logements/annonce/{brouillon.slug}/').status_code, 404)
+        Annonce.objects.filter(pk=self.annonce.pk).update(
+            date_expiration=timezone.now() - timedelta(days=1))
+        self.assertEqual(
+            self.client.get(f'/logements/annonce/{self.annonce.slug}/').status_code, 404)
+
+    def test_compteur_vues_une_fois_par_session(self):
+        url = f'/logements/annonce/{self.annonce.slug}/'
+        self.client.get(url)
+        self.client.get(url)
+        self.annonce.refresh_from_db()
+        self.assertEqual(self.annonce.nb_vues, 1)
+
+    def test_sitemap_et_robots(self):
+        r = self.client.get('/logements/sitemap.xml')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(self.annonce.slug, r.content.decode())
+        r = self.client.get('/robots.txt')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('Disallow: /api/', r.content.decode())

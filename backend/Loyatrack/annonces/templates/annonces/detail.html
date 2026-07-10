@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ titre_seo }} | Loyatrack</title>
+  <meta name="description" content="{{ meta_desc }}">
+  <link rel="canonical" href="{{ canonical }}">
+
+  <!-- Open Graph (aperçu WhatsApp / Facebook) -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="{{ titre_seo }}">
+  <meta property="og:description" content="{{ meta_desc }}">
+  <meta property="og:url" content="{{ canonical }}">
+  {% if cover_url %}<meta property="og:image" content="{{ cover_url }}">{% endif %}
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ titre_seo }}">
+  <meta name="twitter:description" content="{{ meta_desc }}">
+  {% if cover_url %}<meta name="twitter:image" content="{{ cover_url }}">{% endif %}
+
+  <script type="application/ld+json">{{ jsonld|safe }}</script>
+
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; background: #f4f6f8; color: #1a2233; }
+    .topbar { background: linear-gradient(135deg,#1565C0,#2E7D32); color:#fff; padding: 14px 16px; font-weight: 700; }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 16px; }
+    .gallery { display:flex; gap:8px; overflow-x:auto; border-radius:14px; }
+    .gallery img { height: 240px; border-radius:12px; object-fit: cover; flex: 0 0 auto; max-width: 100%; }
+    .noimg { height:200px; border-radius:12px; background:#e7ebf0; display:flex; align-items:center; justify-content:center; color:#9aa5b1; }
+    .card { background:#fff; margin-top:16px; border-radius:14px; padding:18px; box-shadow:0 1px 4px rgba(0,0,0,.06); }
+    h1 { font-size:20px; margin:0 0 6px; }
+    .lieu { color:#556; font-size:14px; margin:0 0 12px; }
+    .prix { font-size:26px; font-weight:800; color:#2E7D32; }
+    .prix small { font-size:13px; font-weight:600; color:#7a8699; }
+    .badge { display:inline-block; background:#e8f5e9; color:#2E7D32; font-size:12px; font-weight:700; padding:4px 10px; border-radius:20px; margin-top:8px; }
+    .specs { display:grid; grid-template-columns: repeat(auto-fit,minmax(120px,1fr)); gap:10px; margin-top:14px; }
+    .spec { background:#f7f9fb; border-radius:10px; padding:10px 12px; font-size:14px; }
+    .spec b { display:block; font-size:16px; }
+    .desc { white-space: pre-line; font-size:15px; line-height:1.5; color:#2a3346; }
+    .avert { background:#fff8e1; border:1px solid #ffe0a3; color:#7a5b00; border-radius:12px; padding:12px 14px; font-size:13px; margin-top:16px; }
+    .cta { display:block; width:100%; text-align:center; padding:14px; border-radius:12px; border:none; font-size:15px; font-weight:700; margin-top:16px; background:#c9d2dc; color:#fff; cursor:not-allowed; }
+    .foot { text-align:center; color:#9aa5b1; font-size:12px; padding:24px 0; }
+  </style>
+</head>
+<body>
+  <div class="topbar">Loyatrack · Logements</div>
+  <div class="wrap">
+
+    {% if photos %}
+    <div class="gallery">
+      {% for p in photos %}<img src="{{ p.image.url }}" alt="{{ type_label }} à {{ lieu }} — photo {{ forloop.counter }}" loading="lazy">{% endfor %}
+    </div>
+    {% else %}
+    <div class="noimg">Pas de photo</div>
+    {% endif %}
+
+    <div class="card">
+      <h1>{{ annonce.titre }}</h1>
+      <p class="lieu">📍 {{ lieu }}{% if annonce.adresse_indicative %} · {{ annonce.adresse_indicative }}{% endif %}</p>
+      <div class="prix">{{ loyer_fmt }} FCFA <small>/ mois</small></div>
+      {% if annonce.charges %}<p class="lieu">+ {{ charges_fmt }} FCFA de charges · caution {{ annonce.caution_mois }} mois</p>{% endif %}
+      <span class="badge">✓ Publié via Loyatrack</span>
+
+      <div class="specs">
+        <div class="spec"><b>{{ annonce.nb_chambres }}</b>chambre(s)</div>
+        <div class="spec"><b>{{ annonce.nb_salons }}</b>salon(s)</div>
+        <div class="spec"><b>{{ annonce.nb_douches }}</b>douche(s)</div>
+        {% if annonce.superficie_m2 %}<div class="spec"><b>{{ annonce.superficie_m2 }}</b>m²</div>{% endif %}
+        <div class="spec"><b>{{ type_label }}</b>{% if annonce.meuble %}meublé{% else %}non meublé{% endif %}</div>
+      </div>
+    </div>
+
+    {% if annonce.description %}
+    <div class="card">
+      <p class="desc">{{ annonce.description }}</p>
+    </div>
+    {% endif %}
+
+    <div class="avert">
+      ⚠️ Ne payez jamais de caution ou d'avance avant d'avoir visité le logement.
+      Loyatrack ne collecte aucun paiement pour une location trouvée ici.
+    </div>
+
+    <!-- Contact = Palier 3 (messagerie). Désactivé pour l'instant. -->
+    <button class="cta" disabled>Contacter le bailleur — bientôt disponible</button>
+
+    <div class="foot">Réf. {{ annonce.reference }} · Loyatrack</div>
+  </div>
+</body>
+</html>
