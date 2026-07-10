@@ -24,26 +24,24 @@ class CinetPayProvider(PaiementProvider):
     def _cfg(self, cle, defaut=''):
         return getattr(settings, cle, defaut)
 
+    @staticmethod
+    def _arrondir_xaf(montant):
+        """XAF : CinetPay exige un montant entier, multiple de 5 (arrondi inférieur)."""
+        m = int(montant)
+        return m - (m % 5)
+
     def creer_paiement(self, transaction, return_url=None):
-        import requests  # import local : dépendance optionnelle
-        payload = {
-            'apikey': self._cfg('CINETPAY_API_KEY'),
-            'site_id': self._cfg('CINETPAY_SITE_ID'),
-            'transaction_id': str(transaction.reference_interne),
-            'amount': int(transaction.montant),
-            'currency': transaction.devise,  # 'XAF'
-            'description': f"Abonnement Loyatrack {transaction.plan} ({transaction.periodicite})",
-            'return_url': return_url or self._cfg('CINETPAY_RETURN_URL'),
-            'notify_url': self._cfg('CINETPAY_NOTIFY_URL'),
-            'channels': 'ALL',
-        }
-        r = requests.post(API_INIT, json=payload, timeout=20)
-        data = r.json()
-        # CinetPay renvoie data.payment_url en cas de succès (code '201').
-        url = (data.get('data') or {}).get('payment_url')
-        if not url:
-            raise RuntimeError(f"CinetPay init échouée : {data}")
-        return url
+        # Abonnement : délègue à l'init générique (payload/POST/extraction d'URL
+        # et arrondi XAF centralisés à un seul endroit).
+        return self.creer_paiement_generique(
+            reference=transaction.reference_interne,
+            montant=transaction.montant,
+            devise=transaction.devise,  # 'XAF'
+            description=f"Abonnement Loyatrack {transaction.plan} ({transaction.periodicite})",
+            return_url=return_url or self._cfg('CINETPAY_RETURN_URL'),
+            notify_url=self._cfg('CINETPAY_NOTIFY_URL'),
+            credentials={},
+        )
 
     def parse_webhook(self, request):
         data = request.data if hasattr(request, 'data') else request.POST
@@ -82,8 +80,7 @@ class CinetPayProvider(PaiementProvider):
             'apikey': (credentials or {}).get('api_key') or self._cfg('CINETPAY_API_KEY'),
             'site_id': (credentials or {}).get('site_id') or self._cfg('CINETPAY_SITE_ID'),
             'transaction_id': str(reference),
-            # CinetPay/XAF exige un montant entier multiple de 5.
-            'amount': int(montant) - (int(montant) % 5),
+            'amount': self._arrondir_xaf(montant),  # XAF : entier multiple de 5
             'currency': devise,
             'description': description,
             'return_url': return_url,
@@ -138,7 +135,7 @@ class CinetPayProvider(PaiementProvider):
                           data={'data': json.dumps(contact)}, timeout=20)
 
             # 3) Envoi de l'argent (XAF : montant entier multiple de 5).
-            montant_xaf = int(montant) - (int(montant) % 5)
+            montant_xaf = self._arrondir_xaf(montant)
             envoi = [{'prefix': '237', 'phone': phone, 'amount': montant_xaf,
                       'client_transaction_id': str(reference),
                       'notify_url': self._cfg('CINETPAY_TRANSFER_NOTIFY_URL')}]
