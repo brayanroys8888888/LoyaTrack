@@ -43,6 +43,61 @@ class LoginView(APIView):
         return Response(tokens_pour(user), status=200)
 
 
+class GoogleAuthView(APIView):
+    """Connexion « Sign in with Google ».
+
+    Le client mobile obtient un `idToken` via google_sign_in, on le vérifie
+    auprès de Google (endpoint tokeninfo : valide signature + expiration), puis
+    on connecte le bailleur correspondant (créé au 1er login, mot de passe
+    inutilisable). Nécessite `settings.GOOGLE_OAUTH_CLIENT_IDS` (audiences OAuth
+    acceptées) ; sinon l'endpoint renvoie 503 (fonctionnalité non configurée).
+    """
+    permission_classes = (permissions.AllowAny,)
+
+    def post(self, request):
+        from django.conf import settings
+        id_token = request.data.get('id_token') or request.data.get('idToken')
+        if not id_token:
+            return Response({'detail': "Jeton Google manquant."}, status=400)
+
+        client_ids = [c.strip() for c in
+                      (getattr(settings, 'GOOGLE_OAUTH_CLIENT_IDS', '') or '').split(',') if c.strip()]
+        if not client_ids:
+            return Response({'detail': "Connexion Google non configurée sur le serveur."},
+                            status=503)
+
+        import requests
+        try:
+            r = requests.get('https://oauth2.googleapis.com/tokeninfo',
+                             params={'id_token': id_token}, timeout=15)
+        except requests.RequestException:
+            return Response({'detail': "Vérification Google indisponible, réessayez."}, status=502)
+        if r.status_code != 200:
+            return Response({'detail': "Jeton Google invalide ou expiré."}, status=401)
+        info = r.json()
+
+        # Contrôles de sécurité : audience (notre app), émetteur, email vérifié.
+        if info.get('aud') not in client_ids:
+            return Response({'detail': "Jeton Google non destiné à cette application."}, status=401)
+        if info.get('iss') not in ('accounts.google.com', 'https://accounts.google.com'):
+            return Response({'detail': "Émetteur du jeton invalide."}, status=401)
+        email = (info.get('email') or '').lower().strip()
+        if not email or str(info.get('email_verified')).lower() != 'true':
+            return Response({'detail': "Adresse Google non vérifiée."}, status=401)
+
+        user = User.objects.filter(email__iexact=email).first()
+        if user is None:
+            # 1er login Google -> création du compte (mot de passe inutilisable :
+            # connexion possible via Google ou après réinitialisation du mot de passe).
+            user = User.objects.create_user(
+                email=email, password=None,
+                first_name=info.get('given_name') or '',
+                last_name=info.get('family_name') or '',
+            )
+
+        return Response(tokens_pour(user), status=200)
+
+
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     permission_classes = (permissions.AllowAny,)

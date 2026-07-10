@@ -18,4 +18,12 @@ class ApiConfig {
 
   // Page de gestion de l'abonnement (ouverte dans le navigateur).
   static String get manageSubscriptionUrl => '$webBase/abonnement/';
+
+  // Web client ID OAuth Google (= audience de l'idToken, aussi utilisé comme
+  // serverClientId côté Android). --dart-define=GOOGLE_SERVER_CLIENT_ID=xxx.apps.googleusercontent.com
+  // Vide = connexion Google désactivée côté client (le bouton affiche un message).
+  static const String googleServerClientId = String.fromEnvironment(
+    'GOOGLE_SERVER_CLIENT_ID',
+    defaultValue: '',
+  );
 }

@@ -56,6 +56,23 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  void _loginGoogle() async {
+    setState(() => _loading = true);
+    final res = await AuthService().loginWithGoogle();
+    if (!mounted) return;
+    setState(() => _loading = false);
+
+    if (res.success) {
+      Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const MainShell()));
+    } else if ((res.error ?? '').isNotEmpty) {
+      // error vide = l'utilisateur a annulé le sélecteur -> pas de message.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(res.error!), backgroundColor: AppColors.danger),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final dark = context.isDark;
@@ -149,7 +166,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     Expanded(child: Divider(color: context.cBorder)),
                   ]),
                   const SizedBox(height: 16),
-                  _GoogleBtn(context: context),
+                  _GoogleBtn(context: context, onTap: _loading ? null : _loginGoogle),
                   const SizedBox(height: 24),
                   GestureDetector(
                     onTap: () {
@@ -548,10 +565,15 @@ class _GradientBtn extends StatelessWidget {
 
 class _GoogleBtn extends StatelessWidget {
   final BuildContext context;
-  const _GoogleBtn({required this.context});
+  final VoidCallback? onTap;
+  const _GoogleBtn({required this.context, this.onTap});
 
   @override
-  Widget build(BuildContext ctx) => Container(
+  Widget build(BuildContext ctx) => GestureDetector(
+      onTap: onTap,
+      child: Opacity(
+      opacity: onTap == null ? 0.6 : 1,
+      child: Container(
         padding: const EdgeInsets.symmetric(vertical: 13),
         decoration: BoxDecoration(
             color: context.cCard,
@@ -578,5 +600,5 @@ class _GoogleBtn extends StatelessWidget {
                   fontWeight: FontWeight.w500,
                   color: context.cText)),
         ]),
-      );
+      )));
 }

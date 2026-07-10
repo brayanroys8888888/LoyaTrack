@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../core/api_client.dart';
+import '../core/api_config.dart';
 import 'firebase_service.dart';
 
 /// Résultat d'une tentative de connexion.
@@ -70,6 +72,42 @@ class AuthService {
       final detail = e.response?.data is Map ? e.response?.data['detail'] : null;
       return LoginResult(
           error: detail?.toString() ?? _messageErreur(e, 'Identifiants invalides'));
+    } catch (e) {
+      return LoginResult(error: e.toString());
+    }
+  }
+
+  /// Connexion « Sign in with Google » : ouvre le sélecteur de compte Google,
+  /// récupère l'idToken et l'échange contre les JWT LoyaTrack via /auth/google/.
+  /// Renvoie `error: ''` (vide) si l'utilisateur annule (aucun message à afficher).
+  Future<LoginResult> loginWithGoogle() async {
+    if (ApiConfig.googleServerClientId.isEmpty) {
+      return const LoginResult(error: 'Connexion Google non configurée.');
+    }
+    try {
+      final googleSignIn = GoogleSignIn(
+        scopes: const ['email'],
+        // serverClientId = Web client ID -> devient l'audience de l'idToken,
+        // que le backend vérifie contre GOOGLE_OAUTH_CLIENT_IDS.
+        serverClientId: ApiConfig.googleServerClientId,
+      );
+      await googleSignIn.signOut(); // force le choix du compte à chaque connexion
+      final account = await googleSignIn.signIn();
+      if (account == null) return const LoginResult(error: ''); // annulé
+      final idToken = (await account.authentication).idToken;
+      if (idToken == null || idToken.isEmpty) {
+        return const LoginResult(error: 'Jeton Google indisponible.');
+      }
+      final r = await _dio.post('auth/google/', data: {'id_token': idToken});
+      if (r.statusCode == 200 && r.data is Map && r.data['access'] != null) {
+        await _saveTokens(r.data);
+        return const LoginResult(success: true);
+      }
+      return const LoginResult(error: 'Réponse inattendue');
+    } on DioException catch (e) {
+      final detail = e.response?.data is Map ? e.response?.data['detail'] : null;
+      return LoginResult(
+          error: detail?.toString() ?? _messageErreur(e, 'Connexion Google échouée'));
     } catch (e) {
       return LoginResult(error: e.toString());
     }

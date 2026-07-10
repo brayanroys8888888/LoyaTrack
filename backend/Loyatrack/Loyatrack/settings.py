@@ -308,6 +308,12 @@ CINETPAY_NOTIFY_URL_LOYER = env('CINETPAY_NOTIFY_URL_LOYER', default='')
 CINETPAY_TRANSFER_PASSWORD = env('CINETPAY_TRANSFER_PASSWORD', default='')
 CINETPAY_TRANSFER_NOTIFY_URL = env('CINETPAY_TRANSFER_NOTIFY_URL', default='')
 
+# Connexion Google (Sign in with Google). Liste des « client IDs » OAuth acceptés
+# comme audience de l'idToken — séparés par des virgules : le Web client ID (utilisé
+# comme serverClientId côté mobile) et éventuellement les client IDs Android/iOS.
+# Vide = connexion Google désactivée côté serveur (l'endpoint renvoie 503).
+GOOGLE_OAUTH_CLIENT_IDS = env('GOOGLE_OAUTH_CLIENT_IDS', default='')
+
 # Email Config (Mock/Console for now)
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 

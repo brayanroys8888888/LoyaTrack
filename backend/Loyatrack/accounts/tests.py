@@ -86,3 +86,47 @@ class AuthTests(TestCase):
         # le nouveau mot de passe fonctionne
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password('NouveauMdp456!'))
+
+
+class GoogleAuthTests(TestCase):
+    """Connexion « Sign in with Google » (idToken vérifié via tokeninfo, mocké)."""
+
+    def setUp(self):
+        self.c = APIClient()
+
+    def test_google_non_configure_renvoie_503(self):
+        with override_settings(GOOGLE_OAUTH_CLIENT_IDS=''):
+            r = self.c.post('/api/v1/auth/google/', {'id_token': 'x'}, format='json')
+        self.assertEqual(r.status_code, 503)
+
+    def test_google_jeton_manquant_400(self):
+        r = self.c.post('/api/v1/auth/google/', {}, format='json')
+        self.assertEqual(r.status_code, 400)
+
+    @override_settings(GOOGLE_OAUTH_CLIENT_IDS='client-web.apps.googleusercontent.com')
+    def test_google_cree_et_connecte(self):
+        from unittest.mock import patch, MagicMock
+        fake = MagicMock(status_code=200)
+        fake.json.return_value = {
+            'aud': 'client-web.apps.googleusercontent.com',
+            'iss': 'https://accounts.google.com',
+            'email': 'Nouveau@Gmail.com', 'email_verified': 'true',
+            'given_name': 'Jean', 'family_name': 'Test',
+        }
+        with patch('requests.get', return_value=fake):
+            r = self.c.post('/api/v1/auth/google/', {'id_token': 'valid'}, format='json')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('access', r.data)
+        u = User.objects.get(email='nouveau@gmail.com')   # email normalisé en minuscule
+        self.assertEqual(u.first_name, 'Jean')
+        self.assertFalse(u.has_usable_password())         # compte Google : mdp inutilisable
+
+    @override_settings(GOOGLE_OAUTH_CLIENT_IDS='mon-client')
+    def test_google_mauvaise_audience_401(self):
+        from unittest.mock import patch, MagicMock
+        fake = MagicMock(status_code=200)
+        fake.json.return_value = {'aud': 'attaquant', 'iss': 'https://accounts.google.com',
+                                  'email': 'x@gmail.com', 'email_verified': 'true'}
+        with patch('requests.get', return_value=fake):
+            r = self.c.post('/api/v1/auth/google/', {'id_token': 'v'}, format='json')
+        self.assertEqual(r.status_code, 401)

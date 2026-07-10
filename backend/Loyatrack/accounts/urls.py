@@ -3,12 +3,13 @@ from .views import (
     RegisterView, UserProfileView, UpdateFCMTokenView,
     LoginView, Login2FAVerifyView, Toggle2FAView,
     PasswordForgotView, PasswordVerifyOtpView, PasswordResetView,
-    ChangePasswordView,
+    ChangePasswordView, GoogleAuthView,
 )
 
 urlpatterns = [
     path('register/', RegisterView.as_view(), name='auth_register'),
     path('login/', LoginView.as_view(), name='auth_login'),
+    path('google/', GoogleAuthView.as_view(), name='auth_google'),
     path('login/verify-otp/', Login2FAVerifyView.as_view(), name='auth_login_verify_otp'),
     path('2fa/toggle/', Toggle2FAView.as_view(), name='auth_2fa_toggle'),
     path('change-password/', ChangePasswordView.as_view(), name='auth_change_password'),
