@@ -106,7 +106,10 @@ class Annonce(models.Model):
     standing = models.CharField(max_length=12, choices=STANDING_CHOICES, blank=True)
 
     # ── Localisation (jamais l'adresse exacte côté public) ───────────────────
-    ville = models.ForeignKey(Ville, on_delete=models.PROTECT, related_name='annonces')
+    # `ville` nullable pour autoriser un brouillon incomplet (ex. créé « depuis
+    # une unité » qui n'en connaît pas la ville) ; obligatoire à la publication.
+    ville = models.ForeignKey(
+        Ville, on_delete=models.PROTECT, null=True, blank=True, related_name='annonces')
     quartier = models.ForeignKey(
         Quartier, on_delete=models.SET_NULL, null=True, blank=True, related_name='annonces')
     adresse_indicative = models.CharField(max_length=255, blank=True)

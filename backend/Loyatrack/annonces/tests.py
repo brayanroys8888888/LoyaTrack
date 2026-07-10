@@ -8,6 +8,8 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
+from rest_framework.test import APIClient
+
 from biens.models import Propriete, UniteLogement
 from locataires.models import Locataire
 
@@ -132,3 +134,80 @@ class AnnonceServiceTests(TestCase):
         a.refresh_from_db()
         self.assertEqual(a.statut, 'publiee')
         self.assertTrue(a.est_visible)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class AnnonceAPITests(TestCase):
+    def setUp(self):
+        self.bailleur = User.objects.create_user(email='b@test.cm', password='x')
+        self.autre = User.objects.create_user(email='autre@test.cm', password='x')
+        self.ville = Ville.objects.create(nom='Douala', slug='douala')
+        self.quartier = Quartier.objects.create(
+            ville=self.ville, nom='Bonamoussadi', slug='bonamoussadi')
+        self.propriete = Propriete.objects.create(bailleur=self.bailleur, titre='Imm A')
+        self.unite = UniteLogement.objects.create(
+            propriete=self.propriete, numero='A1', loyer_standard=Decimal('120000'))
+        self.client = APIClient()
+        self.client.force_authenticate(self.bailleur)
+
+    def _payload(self, **kw):
+        data = dict(titre='Studio centre', type_bien='studio', nb_chambres=1,
+                    loyer='80000', ville=self.ville.id, quartier=self.quartier.id,
+                    description='Studio propre et lumineux.')
+        data.update(kw)
+        return data
+
+    def test_depuis_unite_cree_brouillon_prerempli(self):
+        r = self.client.post('/api/v1/annonces/depuis-unite/',
+                             {'unite': self.unite.id}, format='json')
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(r.data['statut'], 'brouillon')
+        self.assertEqual(Decimal(r.data['loyer']), Decimal('120000'))
+        self.assertEqual(r.data['unite'], self.unite.id)
+        self.assertEqual(r.data['type_bien'], 'appartement')  # immeuble → appartement
+
+    def test_create_et_scoping_liste(self):
+        r = self.client.post('/api/v1/annonces/', self._payload(), format='json')
+        self.assertEqual(r.status_code, 201)
+        # Annonce d'un autre bailleur : invisible dans ma liste.
+        Annonce.objects.create(bailleur=self.autre, ville=self.ville, titre='X')
+        r = self.client.get('/api/v1/annonces/')
+        ids = [a['id'] for a in r.data['results']]
+        self.assertEqual(len(ids), 1)
+
+    def test_publier_via_api_refuse_sans_photo_puis_ok_avec_photo(self):
+        a = Annonce.objects.create(
+            bailleur=self.bailleur, ville=self.ville, quartier=self.quartier,
+            titre='Bel appart', type_bien='appartement', nb_chambres=2,
+            loyer=Decimal('120000'), description='Joli logement.')
+        # Sans photo → 400 avec liste d'erreurs.
+        r = self.client.post(f'/api/v1/annonces/{a.id}/publier/')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('erreurs', r.data)
+        # Upload d'une photo (multipart) → couverture.
+        r = self.client.post(
+            f'/api/v1/annonces/{a.id}/photos/',
+            {'image': SimpleUploadedFile('p.jpg', _JPEG, content_type='image/jpeg')},
+            format='multipart')
+        self.assertEqual(r.status_code, 201)
+        self.assertTrue(r.data['est_couverture'])
+        # Publication OK.
+        r = self.client.post(f'/api/v1/annonces/{a.id}/publier/')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data['statut'], 'publiee')
+        self.assertTrue(r.data['url_publique'].endswith(f'/logements/annonce/{r.data["slug"]}/'))
+
+    def test_localisations_villes_non_paginee(self):
+        r = self.client.get('/api/v1/localisations/villes/')
+        self.assertEqual(r.status_code, 200)
+        self.assertIsInstance(r.data, list)  # pagination désactivée
+        villes = {v['slug']: v for v in r.data}
+        self.assertIn('douala', villes)
+        self.assertIn('bonamoussadi', [q['slug'] for q in villes['douala']['quartiers']])
+
+    def test_scoping_autre_bailleur_404(self):
+        a = Annonce.objects.create(bailleur=self.autre, ville=self.ville, titre='X')
+        r = self.client.get(f'/api/v1/annonces/{a.id}/')
+        self.assertEqual(r.status_code, 404)
+        r = self.client.post(f'/api/v1/annonces/{a.id}/publier/')
+        self.assertEqual(r.status_code, 404)

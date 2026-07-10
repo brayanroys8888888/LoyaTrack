@@ -58,8 +58,13 @@ def publier(annonce):
         raise ValidationError(problemes)
 
     maintenant = timezone.now()
+    # À la 1re publication seulement, on (re)calcule le slug pour qu'il reflète la
+    # localisation finale (un brouillon a pu être créé sans ville/quartier). Les
+    # renouvellements ultérieurs le conservent → l'URL publique reste stable.
+    if annonce.date_publication is None:
+        annonce.slug = annonce._nouveau_slug()
+        annonce.date_publication = maintenant
     annonce.statut = 'publiee'
-    annonce.date_publication = maintenant
     annonce.date_expiration = maintenant + timedelta(days=DUREE_ANNONCE_JOURS)
     annonce.refus_motif = ''
     annonce.save()

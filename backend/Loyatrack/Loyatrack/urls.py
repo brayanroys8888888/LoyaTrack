@@ -45,6 +45,7 @@ urlpatterns = [
     path('api/v1/', include('biens.urls')),
     path('api/v1/', include('comptabilite.urls')),
     path('api/v1/', include('abonnements.urls')),
+    path('api/v1/', include('annonces.urls')),
     path('api/v1/', include(portail_api)),
     # Pages web publiques (à la racine) : portail locataire + espace abonnement bailleur
     path('', include(portail_web)),
