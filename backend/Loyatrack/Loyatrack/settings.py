@@ -71,6 +71,7 @@ INSTALLED_APPS = [
     'comptabilite',
     'portail',
     'abonnements',
+    'annonces',
 ]
 
 MIDDLEWARE = [
