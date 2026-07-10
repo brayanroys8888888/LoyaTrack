@@ -233,3 +233,67 @@ class VerifierEcheancesConfigTests(TestCase):
         r = Rappel.objects.filter(locataire=loc).first()
         self.assertIsNotNone(r)
         self.assertEqual(r.type_rappel, 'WhatsApp')
+
+
+class StatutLifecycleTests(TestCase):
+    """Cycle de vie du statut : Nouveau -> Payé / En retard, ancrage 1er paiement."""
+
+    def setUp(self):
+        self.b = User.objects.create_user(email='b@test.com', password='x')
+
+    def test_nouveau_locataire_est_nouveau_pas_paye(self):
+        l = _locataire(self.b)
+        self.assertEqual(l.statut, 'Nouveau')  # plus de 'Payé' par défaut
+
+    def test_recalcul_echeance_passee_impaye_en_retard(self):
+        from .gestion import recalculer_statut
+        l = _locataire(self.b, jour_echeance=5, date_entree=date(2024, 1, 1))
+        recalculer_statut(l, date(2026, 7, 10))  # échéance du 5 dépassée, impayé
+        l.refresh_from_db()
+        self.assertEqual(l.statut, 'En retard')
+
+    def test_recalcul_echeance_future_reste_nouveau(self):
+        from .gestion import recalculer_statut
+        l = _locataire(self.b, jour_echeance=25, date_entree=date(2024, 1, 1))
+        recalculer_statut(l, date(2026, 7, 10))  # échéance du 25 pas encore atteinte
+        l.refresh_from_db()
+        self.assertEqual(l.statut, 'Nouveau')
+
+    def test_recalcul_facturation_future_reste_nouveau(self):
+        from .gestion import recalculer_statut
+        l = _locataire(self.b, jour_echeance=1, date_entree=date(2024, 1, 1),
+                       date_debut_facturation=date(2026, 8, 1))
+        recalculer_statut(l, date(2026, 7, 10))  # facturation commence en août
+        l.refresh_from_db()
+        self.assertEqual(l.statut, 'Nouveau')
+
+    def test_paiement_solde_passe_a_paye(self):
+        from paiements.models import Paiement
+        from paiements.services import appliquer_paiement
+        l = _locataire(self.b, jour_echeance=1, montant_loyer=Decimal('50000'))
+        self.assertEqual(l.statut, 'Nouveau')
+        appliquer_paiement(Paiement.objects.create(
+            locataire=l, montant=Decimal('50000'),
+            date_paiement=timezone.localdate(), mode_paiement='Espèces'))
+        l.refresh_from_db()
+        self.assertEqual(l.statut, 'Payé')
+
+    def test_premier_paiement_ancre_facturation_et_echeance(self):
+        from paiements.models import Paiement
+        from paiements.services import appliquer_paiement
+        l = _locataire(self.b, jour_echeance=1, montant_loyer=Decimal('50000'))
+        self.assertIsNone(l.date_debut_facturation)
+        jour = timezone.localdate()
+        appliquer_paiement(Paiement.objects.create(
+            locataire=l, montant=Decimal('50000'),
+            date_paiement=jour, mode_paiement='Espèces'))
+        l.refresh_from_db()
+        self.assertEqual(l.date_debut_facturation, jour)   # ancre = date du 1er paiement
+        self.assertEqual(l.jour_echeance, jour.day)        # jour d'échéance recalé
+
+    def test_pas_de_penalite_avant_debut_facturation(self):
+        from penalites.services import appliquer_penalite_locataire
+        # Emménagement le mois prochain -> aucune pénalité pour le mois courant.
+        futur = (date(2026, 7, 10).replace(day=1) + timedelta(days=40)).replace(day=1)
+        l = _locataire(self.b, jour_echeance=1, date_entree=futur, statut='En retard')
+        self.assertIsNone(appliquer_penalite_locataire(l, date(2026, 7, 10)))

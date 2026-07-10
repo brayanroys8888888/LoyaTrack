@@ -179,6 +179,7 @@
   "yesterday": "Yesterday",
   "dueShort": "Due",
 
+  "statusNew": "New",
   "statusPaid": "Paid",
   "statusLate": "Late",
   "statusDiscussion": "In discussion",

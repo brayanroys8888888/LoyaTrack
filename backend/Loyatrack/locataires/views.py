@@ -50,9 +50,11 @@ class LocataireViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post', 'get'])
     def forcer_automatisations(self, request):
         from penalites.tasks import calculer_penalites
+        from .tasks import recalculer_statuts
         verifier_echeances()
+        recalculer_statuts()   # avant les pénalités : bascule Nouveau -> En retard
         calculer_penalites()
-        return Response({'status': 'Tâches d\'automatisation (J-5, J-1, Pénalités) exécutées avec succès !'})
+        return Response({'status': 'Tâches d\'automatisation (échéances, statuts, pénalités) exécutées avec succès !'})
 
     @action(detail=True, methods=['post'])
     def demarrer_test(self, request, pk=None):

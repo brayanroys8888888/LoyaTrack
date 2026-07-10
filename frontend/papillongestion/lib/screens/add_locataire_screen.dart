@@ -31,7 +31,7 @@ class _AddLocataireScreenState extends State<AddLocataireScreen> {
   bool _loading = false;
   bool _isSigning = false;
   bool _modeTest = false;
-  StatutLocataire _statut = StatutLocataire.nonPaye;
+  StatutLocataire _statut = StatutLocataire.nouveau;
   DateTime? _dateEntree;
   String? _typePiece;
   // Pièces d'identité : fichiers locaux à téléverser + fichiers déjà enregistrés.
@@ -77,7 +77,7 @@ class _AddLocataireScreenState extends State<AddLocataireScreen> {
       penColor: Colors.black,
       exportBackgroundColor: Colors.transparent,
     );
-    _statut   = l?.statut ?? StatutLocataire.nonPaye;
+    _statut   = l?.statut ?? StatutLocataire.nouveau;
     _dateEntree = l?.dateEntree ?? DateTime.now();
     _langue   = l?.languePreferee ?? 'fr';
 
@@ -424,9 +424,13 @@ class _AddLocataireScreenState extends State<AddLocataireScreen> {
                     const SizedBox(height: 12),
                     _buildPiecesIdentite(t),
                     const SizedBox(height: 24),
-                    _SectionTitle(t.currentStatus),
-                    _StatutPicker(selected: _statut, onSelect: (s) => setState(() => _statut = s)),
-                    const SizedBox(height: 24),
+                    // Statut manuel uniquement en édition : un nouveau locataire est
+                    // « Nouveau » et évolue automatiquement (paiement / échéance).
+                    if (isEdit) ...[
+                      _SectionTitle(t.currentStatus),
+                      _StatutPicker(selected: _statut, onSelect: (s) => setState(() => _statut = s)),
+                      const SizedBox(height: 24),
+                    ],
                     _SectionTitle(t.signatureDocs),
                     Container(
                       decoration: BoxDecoration(
@@ -942,7 +946,9 @@ class _StatutPicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Wrap(
         spacing: 8, runSpacing: 8,
-        children: StatutLocataire.values.map((s) {
+        children: StatutLocataire.values
+            .where((s) => s != StatutLocataire.nouveau)  // état automatique, non sélectionnable
+            .map((s) {
           final active = selected == s;
           return GestureDetector(
             onTap: () => onSelect(s),

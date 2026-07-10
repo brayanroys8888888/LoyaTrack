@@ -260,6 +260,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'locataires.tasks.verifier_echeances',
         'schedule': crontab(hour=9, minute=0),
     },
+    'recalculer-statuts-locataires': {
+        'task': 'locataires.tasks.recalculer_statuts',
+        'schedule': crontab(hour=0, minute=45),  # avant le calcul des pénalités
+    },
     'calculer-penalites-toutes-les-nuits': {
         'task': 'penalites.tasks.calculer_penalites',
         'schedule': crontab(hour=1, minute=0),

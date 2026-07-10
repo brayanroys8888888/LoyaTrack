@@ -2,31 +2,35 @@ import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 
-enum StatutLocataire { paye, nonPaye, enDiscussion, enPenalite }
+enum StatutLocataire { nouveau, paye, nonPaye, enDiscussion, enPenalite }
 enum ModePaiement    { mobileMoney, especes, virement }
 enum TypeRappel      { sms, whatsapp, appel }
 enum StatutRappel    { envoye, echec, enAttente }
 
 extension StatutExt on StatutLocataire {
   String get label => switch (this) {
+    StatutLocataire.nouveau      => 'Nouveau',
     StatutLocataire.paye         => 'Payé',
     StatutLocataire.nonPaye      => 'En retard',
     StatutLocataire.enDiscussion => 'En discussion',
     StatutLocataire.enPenalite   => 'Pénalité',
   };
   Color get color => switch (this) {
+    StatutLocataire.nouveau      => AppColors.blue,
     StatutLocataire.paye         => AppColors.success,
     StatutLocataire.nonPaye      => AppColors.danger,
     StatutLocataire.enDiscussion => AppColors.warning,
     StatutLocataire.enPenalite   => AppColors.penalty,
   };
   Color bgColor(BuildContext ctx) => switch (this) {
+    StatutLocataire.nouveau      => ctx.cCard,
     StatutLocataire.paye         => ctx.cSuccessBg,
     StatutLocataire.nonPaye      => ctx.cDangerBg,
     StatutLocataire.enDiscussion => ctx.cWarningBg,
     StatutLocataire.enPenalite   => ctx.cPenaltyBg,
   };
   String get icon => switch (this) {
+    StatutLocataire.nouveau      => '○',
     StatutLocataire.paye         => '✓',
     StatutLocataire.nonPaye      => '●',
     StatutLocataire.enDiscussion => '◐',
@@ -36,11 +40,12 @@ extension StatutExt on StatutLocataire {
 
 StatutLocataire statutFromString(String status) {
   switch (status) {
+    case 'Nouveau':       return StatutLocataire.nouveau;
     case 'Payé':          return StatutLocataire.paye;
     case 'En retard':     return StatutLocataire.nonPaye;
     case 'En discussion': return StatutLocataire.enDiscussion;
     case 'En pénalité':  return StatutLocataire.enPenalite;
-    default:              return StatutLocataire.paye;
+    default:              return StatutLocataire.nouveau;
   }
 }
 
@@ -357,6 +362,7 @@ String relativeDateL(DateTime d, AppLocalizations t, String lang) {
 }
 
 String statutLabelL(StatutLocataire s, AppLocalizations t) => switch (s) {
+  StatutLocataire.nouveau      => t.statusNew,
   StatutLocataire.paye         => t.statusPaid,
   StatutLocataire.nonPaye      => t.statusLate,
   StatutLocataire.enDiscussion => t.statusDiscussion,

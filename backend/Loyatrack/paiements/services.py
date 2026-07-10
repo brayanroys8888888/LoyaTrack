@@ -57,6 +57,16 @@ def appliquer_paiement(paiement):
         dp = paiement.date_paiement
         paiement.periode_debut = date(dp.year, dp.month, 1)
 
+    # Ancrage du cycle sur le 1er paiement : au tout premier versement (et si le
+    # début de facturation n'a pas été fixé à la main), on cale le début de
+    # facturation et le jour d'échéance sur la date réelle du paiement.
+    est_premier = not Paiement.objects.filter(
+        locataire=locataire).exclude(pk=paiement.pk).exists()
+    if est_premier and not locataire.date_debut_facturation:
+        locataire.date_debut_facturation = paiement.date_paiement
+        locataire.jour_echeance = paiement.date_paiement.day
+        locataire.save(update_fields=['date_debut_facturation', 'jour_echeance'])
+
     # Avance pluri-mensuelle : un seul versement couvrant >= 2 mois d'obligation.
     if du_mensuel and montant >= 2 * du_mensuel:
         nb_mois = int(montant // du_mensuel)
@@ -75,12 +85,15 @@ def appliquer_paiement(paiement):
     cumul = anterieurs + montant
 
     if du_mensuel and cumul < du_mensuel:
-        # Mois pas encore couvert : on ne solde pas le locataire.
+        # Mois pas encore couvert : on ne solde pas le locataire, mais on
+        # réévalue son statut (En retard si l'échéance est passée, sinon Nouveau).
         paiement.statut = 'partiel'
         paiement.nb_mois = 1
         paiement.periode_fin = paiement.periode_debut
         paiement.reste_du = (du_mensuel - cumul).quantize(Decimal('0.01'))
         paiement.save()
+        from locataires.gestion import recalculer_statut
+        recalculer_statut(locataire)
         return paiement
 
     # Mois couvert (ou loyer non défini) : paiement soldant.

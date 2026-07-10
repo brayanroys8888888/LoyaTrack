@@ -16,6 +16,7 @@ class DonneesIncompletesException implements Exception {
 // Convertit l'enum Flutter vers la chaîne attendue par le backend Django
 String _statutToBackend(StatutLocataire statut) {
   switch (statut) {
+    case StatutLocataire.nouveau:      return 'Nouveau';
     case StatutLocataire.paye:         return 'Payé';
     case StatutLocataire.nonPaye:      return 'En retard';
     case StatutLocataire.enDiscussion: return 'En discussion';
@@ -85,7 +86,8 @@ class LocataireService {
         if (frequencePaiement != null) 'frequence_paiement': frequencePaiement,
         'montant_loyer': montantLoyer,
         'jour_echeance': jourEcheance,
-        'statut': _statutToBackend(statut),
+        // Pas de statut à la création : le backend assigne « Nouveau »
+        // (→ Payé au 1er paiement, En retard si l'échéance passe sans paiement).
         'date_entree': dateEntree.toIso8601String().split('T').first,
         if (penaliteJournaliere != null) 'penalite_journaliere': penaliteJournaliere,
         if (notes != null && notes.isNotEmpty) 'notes': notes,

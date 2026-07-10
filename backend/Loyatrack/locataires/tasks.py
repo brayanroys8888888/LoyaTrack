@@ -54,6 +54,24 @@ def verifier_echeances():
 
 
 @shared_task
+def recalculer_statuts():
+    """Recalcule quotidiennement le statut payé/retard des locataires actifs.
+
+    Fait basculer « Nouveau » → « En retard » quand l'échéance passe sans paiement
+    et « Payé » quand le mois est couvert. « En discussion » reste gelé.
+    """
+    from .gestion import recalculer_statut
+    n = 0
+    for loc in Locataire.objects.filter(is_deleted=False, archive=False):
+        try:
+            recalculer_statut(loc)
+            n += 1
+        except Exception as e:
+            logger.error(f"Erreur recalcul statut pour {loc}: {e}")
+    return n
+
+
+@shared_task
 def appliquer_augmentations():
     """Applique les révisions de loyer programmées dont la date est arrivée (3.3)."""
     from .gestion import appliquer_augmentations_dues

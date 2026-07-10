@@ -342,6 +342,7 @@ class LocataireCard extends StatelessWidget {
       {required this.loc, this.onTap, this.showAmount = true, super.key});
 
   Color _avatarBg(BuildContext ctx) => switch (loc.statut) {
+        StatutLocataire.nouveau => ctx.cBlue3,
         StatutLocataire.paye => ctx.cBlue3,
         StatutLocataire.nonPaye => ctx.cDangerBg,
         StatutLocataire.enDiscussion => ctx.cWarningBg,

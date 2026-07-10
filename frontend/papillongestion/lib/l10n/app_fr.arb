@@ -185,6 +185,7 @@
   "yesterday": "Hier",
   "dueShort": "Éch.",
 
+  "statusNew": "Nouveau",
   "statusPaid": "Payé",
   "statusLate": "En retard",
   "statusDiscussion": "En discussion",

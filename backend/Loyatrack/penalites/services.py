@@ -40,6 +40,10 @@ def appliquer_penalite_locataire(locataire, aujourd_hui=None):
         return None
 
     echeance = echeance_du_mois(aujourd_hui.year, aujourd_hui.month, locataire.jour_echeance)
+    # Pas de pénalité pour un mois antérieur à l'emménagement / début de facturation.
+    debut_facturation = locataire.date_debut_facturation or locataire.date_entree
+    if debut_facturation and echeance < debut_facturation:
+        return None
     delai_grace = config.delai_grace if config else 0
     date_limite = echeance + timedelta(days=delai_grace)
 

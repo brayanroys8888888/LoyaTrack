@@ -3,6 +3,7 @@ from django.conf import settings
 
 class Locataire(models.Model):
     STATUT_CHOICES = (
+        ('Nouveau', 'Nouveau'),            # créé, pas encore de paiement ni d'échéance dépassée
         ('Payé', 'Payé'),
         ('En retard', 'En retard'),
         ('En discussion', 'En discussion'),
@@ -21,7 +22,7 @@ class Locataire(models.Model):
 
     montant_loyer = models.DecimalField(max_digits=10, decimal_places=2)
     jour_echeance = models.IntegerField() # 1 to 31
-    statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default='Payé')
+    statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default='Nouveau')
     date_entree = models.DateField()
 
     # --- Données pour documents légaux (Loi camerounaise 2014/023) ---

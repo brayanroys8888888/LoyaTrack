@@ -20,6 +20,51 @@ def _coerce_date(valeur):
     raise ValueError(f"date invalide: {valeur}")
 
 
+# ------------------------------------------------------------------- Statut
+def _debut_facturation(locataire):
+    """Date à partir de laquelle le locataire est facturable (facturation ou emménagement)."""
+    return locataire.date_debut_facturation or locataire.date_entree
+
+
+def recalculer_statut(locataire, aujourd_hui=None):
+    """Recalcule le statut payé/retard d'un locataire à partir de ses paiements.
+
+    Règles :
+    - Mois soldé (couverture par période) → « Payé » (y compris depuis
+      Nouveau/En retard/En pénalité — le paiement a réglé le mois).
+    - « En discussion » (arrangement) et « En pénalité » (moteur de pénalités)
+      ne sont jamais rétrogradés ici tant que le mois n'est pas soldé.
+    - Pas encore facturable (n'a pas emménagé / facturation à venir) → « Nouveau ».
+    - Mois dû et échéance dépassée (postérieure au début de facturation) →
+      « En retard » ; sinon → « Nouveau ».
+
+    Renvoie le statut et le sauvegarde s'il a changé.
+    """
+    from paiements.services import montant_du_ce_mois
+    from penalites.models import echeance_du_mois
+
+    aujourd_hui = aujourd_hui or timezone.now().date()
+
+    if montant_du_ce_mois(locataire, aujourd_hui) <= 0:
+        nouveau = 'Payé'
+    elif locataire.statut in ('En discussion', 'En pénalité'):
+        return locataire.statut  # arrangement / pénalité en cours : pas de rétrogradation
+    else:
+        debut = _debut_facturation(locataire)
+        echeance = echeance_du_mois(aujourd_hui.year, aujourd_hui.month, locataire.jour_echeance)
+        if debut and debut > aujourd_hui:
+            nouveau = 'Nouveau'  # pas encore emménagé / facturation à venir
+        elif aujourd_hui > echeance and (not debut or echeance >= debut):
+            nouveau = 'En retard'  # échéance dépassée (et postérieure à l'emménagement)
+        else:
+            nouveau = 'Nouveau'  # créé, échéance du mois pas encore atteinte
+
+    if nouveau != locataire.statut:
+        locataire.statut = nouveau
+        locataire.save(update_fields=['statut'])
+    return locataire.statut
+
+
 # ---------------------------------------------------------------- Augmentation
 def programmer_augmentation(locataire, montant, date_debut, motif=''):
     """Crée une révision de loyer. Appliquée immédiatement si la date est passée/aujourd'hui."""
