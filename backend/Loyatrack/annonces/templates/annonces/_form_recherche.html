@@ -1,0 +1,16 @@
+<form class="recherche" method="get" action="/logements/recherche/">
+  <select name="ville" aria-label="Ville">
+    <option value="">Ville</option>
+    {% for v in villes %}<option value="{{ v.slug }}"{% if form.ville == v.slug %} selected{% endif %}>{{ v.nom }}</option>{% endfor %}
+  </select>
+  <select name="type" aria-label="Type">
+    <option value="">Type de bien</option>
+    {% for k, label in types %}<option value="{{ k }}"{% if form.type == k %} selected{% endif %}>{{ label }}</option>{% endfor %}
+  </select>
+  <select name="chambres" aria-label="Chambres">
+    <option value="">Chambres</option>
+    {% for n in "12345"|make_list %}<option value="{{ n }}"{% if form.chambres == n %} selected{% endif %}>{{ n }}+</option>{% endfor %}
+  </select>
+  <input type="number" name="prix_max" placeholder="Prix max (FCFA)" value="{{ form.prix_max }}" min="0">
+  <button type="submit">Rechercher</button>
+</form>

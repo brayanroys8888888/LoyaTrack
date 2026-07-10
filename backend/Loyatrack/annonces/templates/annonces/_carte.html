@@ -1,0 +1,10 @@
+<a class="carte" href="/logements/annonce/{{ a.slug }}/">
+  {% with cov=a.photo_couverture %}
+  {% if cov %}<img src="{{ cov.image.url }}" alt="{{ a.titre }}" loading="lazy" width="200" height="130">{% else %}<div class="noimg">🏠</div>{% endif %}
+  {% endwith %}
+  <div class="ci">
+    <div class="ct">{{ a.titre }}</div>
+    <div class="cl">📍 {{ a.quartier.nom|default:a.ville.nom }}</div>
+    <div class="cp">{{ a.loyer_fmt }} FCFA<span> /mois</span></div>
+  </div>
+</a>

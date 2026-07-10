@@ -186,6 +186,15 @@ class Annonce(models.Model):
                 and self.date_expiration is not None
                 and self.date_expiration > timezone.now())
 
+    @property
+    def photo_couverture(self):
+        """Photo de couverture (marquée, sinon la première). Utiliser
+        prefetch_related('photos') pour éviter les requêtes N+1."""
+        photos = list(self.photos.all())
+        if not photos:
+            return None
+        return next((p for p in photos if p.est_couverture), photos[0])
+
     def __str__(self):
         return f"{self.titre} [{self.reference} · {self.statut}]"
 

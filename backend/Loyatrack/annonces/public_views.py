@@ -6,20 +6,40 @@ LOYATRACK_MARKETPLACE_PLAN.md §9.4. La recherche / les pages de localisation
 """
 import json
 
-from django.db.models import F
+from django.core.paginator import Paginator
+from django.db.models import Avg, Count, F, Q
 from django.http import Http404, HttpResponse
-from django.shortcuts import render
+from django.shortcuts import get_object_or_404, render
 from django.template.loader import render_to_string
 from django.utils import timezone
 
-from .models import Annonce
+from .models import Annonce, Ville, Quartier
 
 _TYPES = dict(Annonce.TYPE_CHOICES)
+# Libellés pluriels FR pour les titres des pages de liste.
+_PLURIEL = {
+    'appartement': 'Appartements', 'villa': 'Villas', 'studio': 'Studios',
+    'chambre': 'Chambres', 'immeuble': 'Immeubles', 'bureau': 'Bureaux',
+    'autre': 'Logements',
+}
+_PAR_PAGE = 12
 
 
 def _fmt_fcfa(montant):
     """Formate un entier FCFA avec séparateur d'espace (style FR)."""
     return f"{int(montant or 0):,}".replace(',', ' ')
+
+
+def _publiees():
+    """Annonces publiées et non expirées (base commune des pages publiques)."""
+    return (Annonce.objects
+            .filter(statut='publiee', date_expiration__gt=timezone.now())
+            .select_related('ville', 'quartier')
+            .prefetch_related('photos'))
+
+
+def _jsonld(data):
+    return json.dumps(data, ensure_ascii=False).replace('<', '\\u003c')
 
 
 def annonce_publique(request, slug):
@@ -99,12 +119,165 @@ def annonce_publique(request, slug):
     })
 
 
+def _int(v):
+    return int(v) if v and str(v).isdigit() else None
+
+
+def _form_valeurs(request):
+    g = request.GET
+    return {'ville': g.get('ville', ''), 'type': g.get('type', ''),
+            'chambres': g.get('chambres', ''), 'prix_max': g.get('prix_max', ''),
+            'meuble': g.get('meuble', '')}
+
+
+def _contexte_liste(request, annonces, *, titre, h1, intro, fil, canonical,
+                    indexable, sous_liens=()):
+    """Pagine, prépare l'affichage et construit les JSON-LD Breadcrumb + ItemList."""
+    paginator = Paginator(annonces, _PAR_PAGE)
+    page = paginator.get_page(request.GET.get('page'))
+    for a in page:
+        a.loyer_fmt = _fmt_fcfa(a.loyer)
+
+    blocs = []
+    if fil:
+        blocs.append(_jsonld({
+            "@context": "https://schema.org", "@type": "BreadcrumbList",
+            "itemListElement": [
+                {"@type": "ListItem", "position": i + 1, "name": nom,
+                 "item": request.build_absolute_uri(url)}
+                for i, (nom, url) in enumerate(fil)],
+        }))
+    if page.object_list:
+        blocs.append(_jsonld({
+            "@context": "https://schema.org", "@type": "ItemList",
+            "itemListElement": [
+                {"@type": "ListItem", "position": i + 1,
+                 "url": request.build_absolute_uri(f'/logements/annonce/{a.slug}/')}
+                for i, a in enumerate(page.object_list)],
+        }))
+    params = request.GET.copy()
+    params.pop('page', None)
+    return {
+        'page': page, 'total': paginator.count, 'titre': titre, 'h1': h1,
+        'intro': intro, 'fil': fil, 'canonical': canonical, 'indexable': indexable,
+        'jsonld_blocs': blocs, 'sous_liens': list(sous_liens),
+        'qs_str': params.urlencode(),
+        'form': _form_valeurs(request), 'villes': Ville.objects.all(),
+        'types': Annonce.TYPE_CHOICES,
+    }
+
+
+def accueil(request):
+    """Page d'accueil de la vitrine : recherche + villes + annonces récentes."""
+    now = timezone.now()
+    villes = (Ville.objects
+              .annotate(n=Count('annonces', filter=Q(annonces__statut='publiee',
+                                                     annonces__date_expiration__gt=now)))
+              .order_by('ordre', 'nom'))
+    recentes = list(_publiees().order_by('-date_publication', '-id')[:6])
+    for a in recentes:
+        a.loyer_fmt = _fmt_fcfa(a.loyer)
+    return render(request, 'annonces/accueil.html', {
+        'villes': villes, 'recentes': recentes,
+        'form': _form_valeurs(request), 'types': Annonce.TYPE_CHOICES,
+        'canonical': request.build_absolute_uri('/logements/'),
+    })
+
+
+def annonces_liste(request, ville_slug, quartier_slug=None, type_bien=None, chambres=None):
+    """Page de localisation SEO (ville / quartier / type / combo type-N-chambres)."""
+    ville = get_object_or_404(Ville, slug=ville_slug)
+    quartier = get_object_or_404(Quartier, ville=ville, slug=quartier_slug) if quartier_slug else None
+    if type_bien and type_bien not in _TYPES:
+        raise Http404
+    chambres = _int(chambres)
+
+    qs = _publiees().filter(ville=ville)
+    if quartier:
+        qs = qs.filter(quartier=quartier)
+    if type_bien:
+        qs = qs.filter(type_bien=type_bien)
+    if chambres:
+        qs = qs.filter(nb_chambres=chambres)
+    qs = qs.order_by('-date_publication', '-id')
+
+    lieu = f"{quartier.nom}, {ville.nom}" if quartier else ville.nom
+    type_label = _PLURIEL.get(type_bien, 'Logements') if type_bien else 'Logements'
+    ch = f"{chambres} chambres " if chambres else ""
+    h1 = f"{type_label} {ch}à louer à {lieu}".replace('  ', ' ').strip()
+    avg = qs.aggregate(m=Avg('loyer'))['m']
+    intro = f"{qs.count()} logement(s) à louer à {lieu}."
+    if avg:
+        intro += f" Loyer moyen : {_fmt_fcfa(avg)} FCFA/mois."
+
+    base = f'/logements/louer/{ville.slug}/'
+    fil = [('Accueil', '/logements/'), (ville.nom, base)]
+    if quartier:
+        fil.append((quartier.nom, f'{base}{quartier.slug}/'))
+    if type_bien:
+        fil.append((_TYPES[type_bien], f'{base}{quartier.slug}/{type_bien}/'))
+
+    # Maillage interne (crawlabilité) : sous-pages ayant des annonces.
+    sous_liens = []
+    if not quartier:
+        qids = [x for x in qs.values_list('quartier', flat=True).distinct() if x]
+        sous_liens = [(q.nom, f'{base}{q.slug}/')
+                      for q in Quartier.objects.filter(id__in=qids).order_by('nom')]
+    elif not type_bien:
+        for t in qs.values_list('type_bien', flat=True).distinct():
+            sous_liens.append((_PLURIEL.get(t, t), f'{base}{quartier.slug}/{t}/'))
+
+    ctx = _contexte_liste(
+        request, qs, titre=f"{h1} | Loyatrack", h1=h1, intro=intro, fil=fil,
+        canonical=request.build_absolute_uri(request.path), indexable=True,
+        sous_liens=sous_liens)
+    return render(request, 'annonces/liste.html', ctx)
+
+
+def recherche(request):
+    """Recherche à facettes (query params) — non indexée (noindex, canonical vitrine)."""
+    g = request.GET
+    qs = _publiees()
+    ville = Ville.objects.filter(slug=g.get('ville')).first() if g.get('ville') else None
+    if ville:
+        qs = qs.filter(ville=ville)
+    if g.get('type') in _TYPES:
+        qs = qs.filter(type_bien=g['type'])
+    if _int(g.get('chambres')):
+        qs = qs.filter(nb_chambres__gte=_int(g['chambres']))
+    if _int(g.get('prix_max')):
+        qs = qs.filter(loyer__lte=_int(g['prix_max']))
+    if g.get('meuble') == '1':
+        qs = qs.filter(meuble=True)
+    qs = qs.order_by('-date_publication', '-id')
+
+    ctx = _contexte_liste(
+        request, qs, titre='Recherche de logements à louer | Loyatrack',
+        h1='Rechercher un logement', intro=f"{qs.count()} résultat(s).",
+        fil=[('Accueil', '/logements/'), ('Recherche', '/logements/recherche/')],
+        canonical=request.build_absolute_uri('/logements/recherche/'), indexable=False)
+    return render(request, 'annonces/liste.html', ctx)
+
+
 def sitemap_annonces(request):
-    """Sitemap XML minimal des annonces publiées (l'usine SEO complète = Palier 2)."""
-    annonces = Annonce.objects.filter(
-        statut='publiee', date_expiration__gt=timezone.now()).only('slug', 'date_maj')
-    urls = [(request.build_absolute_uri(f'/logements/annonce/{a.slug}/'),
-             a.date_maj.date().isoformat()) for a in annonces]
+    """Sitemap XML : accueil + pages de localisation (villes, quartiers) + annonces."""
+    now = timezone.now()
+    aujourd_hui = now.date().isoformat()
+    urls = [(request.build_absolute_uri('/logements/'), aujourd_hui)]
+
+    for ville in Ville.objects.all():
+        if _publiees().filter(ville=ville).exists():
+            urls.append((request.build_absolute_uri(f'/logements/louer/{ville.slug}/'), aujourd_hui))
+    qids = [x for x in _publiees().values_list('quartier', flat=True).distinct() if x]
+    for q in Quartier.objects.filter(id__in=qids).select_related('ville'):
+        urls.append((request.build_absolute_uri(
+            f'/logements/louer/{q.ville.slug}/{q.slug}/'), aujourd_hui))
+
+    for a in Annonce.objects.filter(
+            statut='publiee', date_expiration__gt=now).only('slug', 'date_maj'):
+        urls.append((request.build_absolute_uri(f'/logements/annonce/{a.slug}/'),
+                     a.date_maj.date().isoformat()))
+
     xml = render_to_string('annonces/sitemap.xml', {'urls': urls})
     return HttpResponse(xml, content_type='application/xml')
 

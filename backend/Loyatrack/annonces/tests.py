@@ -263,3 +263,70 @@ class AnnoncePubliqueTests(TestCase):
         r = self.client.get('/robots.txt')
         self.assertEqual(r.status_code, 200)
         self.assertIn('Disallow: /api/', r.content.decode())
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class AnnoncesListeTests(TestCase):
+    def setUp(self):
+        self.bailleur = User.objects.create_user(email='b@test.cm', password='x')
+        self.ville = Ville.objects.create(nom='Douala', slug='douala')
+        self.quartier = Quartier.objects.create(
+            ville=self.ville, nom='Bonamoussadi', slug='bonamoussadi')
+        self.annonce = Annonce.objects.create(
+            bailleur=self.bailleur, ville=self.ville, quartier=self.quartier,
+            titre='Bel appart', type_bien='appartement', nb_chambres=2,
+            loyer=Decimal('120000'), description='Joli logement.')
+        PhotoAnnonce.objects.create(
+            annonce=self.annonce, est_couverture=True,
+            image=SimpleUploadedFile('p.jpg', _JPEG, content_type='image/jpeg'))
+        services.publier(self.annonce)
+        self.annonce.refresh_from_db()
+
+    def test_accueil(self):
+        r = self.client.get('/logements/')
+        self.assertEqual(r.status_code, 200)
+        html = r.content.decode()
+        self.assertIn('Douala', html)
+        self.assertIn(self.annonce.slug, html)
+
+    def test_page_ville_seo(self):
+        r = self.client.get('/logements/louer/douala/')
+        self.assertEqual(r.status_code, 200)
+        html = r.content.decode()
+        self.assertIn('BreadcrumbList', html)
+        self.assertIn('ItemList', html)
+        self.assertIn('rel="canonical"', html)
+        self.assertIn(self.annonce.slug, html)
+
+    def test_page_quartier_et_type(self):
+        self.assertEqual(self.client.get('/logements/louer/douala/bonamoussadi/').status_code, 200)
+        r = self.client.get('/logements/louer/douala/bonamoussadi/appartement/')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(self.annonce.slug, r.content.decode())
+
+    def test_combo_type_chambres(self):
+        # L'annonce a 2 chambres → présente sur la page combo « 2 chambres ».
+        r = self.client.get('/logements/louer/douala/bonamoussadi/appartement-2-chambres/')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(self.annonce.slug, r.content.decode())
+        # 5 chambres → aucune annonce.
+        r = self.client.get('/logements/louer/douala/bonamoussadi/appartement-5-chambres/')
+        self.assertEqual(r.status_code, 200)
+        self.assertNotIn(self.annonce.slug, r.content.decode())
+
+    def test_recherche_noindex(self):
+        r = self.client.get('/logements/recherche/?ville=douala&type=appartement')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('noindex', r.content.decode())
+        self.assertIn(self.annonce.slug, r.content.decode())
+
+    def test_404_ville_et_type_invalides(self):
+        self.assertEqual(self.client.get('/logements/louer/inexistante/').status_code, 404)
+        self.assertEqual(
+            self.client.get('/logements/louer/douala/bonamoussadi/xxx/').status_code, 404)
+
+    def test_sitemap_inclut_localisations(self):
+        html = self.client.get('/logements/sitemap.xml').content.decode()
+        self.assertIn('/logements/louer/douala/', html)
+        self.assertIn('/logements/louer/douala/bonamoussadi/', html)
+        self.assertIn(self.annonce.slug, html)
