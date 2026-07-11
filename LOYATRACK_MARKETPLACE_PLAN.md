@@ -1,6 +1,6 @@
 # LOYATRACK — Plan d'implémentation : Vitrine d'annonces + Messagerie (marketplace de location)
 
-> Statut : **Paliers 1 & 2 IMPLÉMENTÉS** (branche `feat/marketplace-annonces`, 7 commits, recette e2e OK). Reste Palier 3 (messagerie + anti-arnaque) et Palier 4 (monétisation). Spéc détaillée du Palier 1 en §9.
+> Statut : **Paliers 1, 2 & 3 IMPLÉMENTÉS** (branche `feat/marketplace-annonces`, 11 commits, recette e2e OK). Reste Palier 4 (monétisation : boost/à la une, limites par plan, stats). Spéc détaillée du Palier 1 en §9.
 > Objectif stratégique : rendre LoyaTrack **indispensable même au bailleur de 1–5 logements** en l'accrochant à une douleur plus grande et récurrente que la gestion — **re-louer un logement vacant**. Le CRM devient le back-office ; la vitrine devient l'acquisition.
 > Avantage déloyal à exploiter à fond : **LoyaTrack connaît déjà les unités vacantes** (`biens.UniteLogement`) et **l'identité vérifiée du bailleur** (pièce d'identité). Publier une annonce doit être un geste à **1 tap, pré-rempli**, et afficher un badge **« Bailleur vérifié »** qu'aucun groupe Facebook n'a.
 > **Décisions actées (2026-07-10)** : (1) **marque unique LoyaTrack**, vitrine grand public sous le libellé « Logements », servie en **sous-dossier `/logements/`** (pas un sous-domaine — on mutualise l'autorité SEO ; réversible plus tard) ; (2) **identité chercheur = numéro de téléphone vérifié une seule fois** (OTP **WhatsApp de préférence**, SMS en repli), de confiance ensuite pendant une période (pas de re-OTP par contact), table **`Chercheur` distincte** du modèle bailleur, **Google Sign-In optionnel** mais téléphone toujours capturé, **jamais de contact anonyme**.
@@ -241,7 +241,7 @@ Livrable : le bailleur publie une annonce en 1 tap (pré-remplie depuis `UniteLo
 - Recherche à facettes (`/recherche/`) : localisation, type, chambres, prix, meublé.
 - Contenu programmatique par quartier.
 
-### Palier 3 — Messagerie + anti-arnaque
+### Palier 3 — Messagerie + anti-arnaque  ✅ FAIT
 - `Chercheur` (OTP), `Conversation`, `Message`, notifications/FCM.
 - Bandeaux sécurité, strip téléphone, rate-limit, signalement/blocage.
 - File de modération + auto-checks.
