@@ -2,20 +2,20 @@
 {% block title %}Louer un logement au Cameroun — Loyatrack Logements{% endblock %}
 {% block meta_desc %}Trouvez un appartement, une villa ou un studio à louer à Douala, Yaoundé et ailleurs au Cameroun. Annonces vérifiées, publiées par des bailleurs sur Loyatrack.{% endblock %}
 {% block content %}
-  <div class="hero">
-    <h1>Trouvez votre logement au Cameroun</h1>
-    <p>Annonces vérifiées, publiées directement par des bailleurs sur Loyatrack.</p>
-  </div>
+  <section class="hero">
+    <h1>Trouvez votre prochain logement<br>au Cameroun</h1>
+    <p>Appartements, studios et villas à louer — des annonces vérifiées, publiées directement par des bailleurs sur Loyatrack.</p>
+  </section>
 
   {% include "annonces/_form_recherche.html" %}
 
   <h2>Explorer par ville</h2>
-  <div class="puces">
-    {% for v in villes %}{% if v.n %}<a href="/logements/louer/{{ v.slug }}/">{{ v.nom }} ({{ v.n }})</a>{% endif %}{% endfor %}
+  <div class="chips">
+    {% for v in villes %}{% if v.n %}<a href="/logements/louer/{{ v.slug }}/">{{ v.nom }} <b>· {{ v.n }}</b></a>{% endif %}{% endfor %}
   </div>
 
   {% if recentes %}
   <h2>Annonces récentes</h2>
-  <div class="grille">{% for a in recentes %}{% include "annonces/_carte.html" %}{% endfor %}</div>
+  <div class="grid">{% for a in recentes %}{% include "annonces/_carte.html" %}{% endfor %}</div>
   {% endif %}
 {% endblock %}

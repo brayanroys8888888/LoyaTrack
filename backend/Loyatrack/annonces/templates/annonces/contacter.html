@@ -11,7 +11,7 @@
   {% if erreur %}<div class="err">{{ erreur }}</div>{% endif %}
 
   {% if etape == 'phone' %}
-  <form class="carte-form" method="post">{% csrf_token %}
+  <form class="panel" method="post">{% csrf_token %}
     <input type="hidden" name="etape" value="phone">
     <label>Votre nom<input type="text" name="nom" placeholder="Votre nom"></label>
     <label>Téléphone<input type="tel" name="telephone" placeholder="6XX XX XX XX" required></label>
@@ -19,14 +19,14 @@
     <p class="hint">Nous vous enverrons un code par SMS pour vérifier votre numéro (une seule fois).</p>
   </form>
   {% elif etape == 'otp' %}
-  <form class="carte-form" method="post">{% csrf_token %}
+  <form class="panel" method="post">{% csrf_token %}
     <input type="hidden" name="etape" value="otp">
     <label>Code reçu par SMS<input type="text" name="code" inputmode="numeric" maxlength="6" required></label>
     {% if dev_code %}<p class="hint">Code (mode dev) : <b>{{ dev_code }}</b></p>{% endif %}
     <button type="submit">Vérifier</button>
   </form>
   {% elif etape == 'message' %}
-  <form class="carte-form" method="post">{% csrf_token %}
+  <form class="panel" method="post">{% csrf_token %}
     <input type="hidden" name="etape" value="message">
     <label>Votre message<textarea name="corps" rows="4" required>{{ message_defaut }}</textarea></label>
     <button type="submit">Envoyer au bailleur</button>

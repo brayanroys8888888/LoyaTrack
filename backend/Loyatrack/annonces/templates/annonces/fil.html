@@ -17,7 +17,7 @@
   </div>
 
   {% if conv.statut == 'ouverte' %}
-  <form class="carte-form" method="post">{% csrf_token %}
+  <form class="panel" method="post">{% csrf_token %}
     <textarea name="corps" rows="2" placeholder="Votre message…" required></textarea>
     <button type="submit">Envoyer</button>
   </form>

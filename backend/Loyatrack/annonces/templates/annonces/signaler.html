@@ -6,10 +6,10 @@
   <h1>Signaler cette annonce</h1>
   {% if envoye %}
   <div class="avert">Merci. Votre signalement a bien été transmis à notre équipe de modération.</div>
-  <div class="puces"><a href="/logements/annonce/{{ annonce.slug }}/">Retour à l'annonce</a></div>
+  <div class="chips"><a href="/logements/annonce/{{ annonce.slug }}/">Retour à l'annonce</a></div>
   {% else %}
   <p class="intro">Annonce frauduleuse, logement déjà loué, prix ou informations erronés… Décrivez le problème.</p>
-  <form class="carte-form" method="post">{% csrf_token %}
+  <form class="panel" method="post">{% csrf_token %}
     <textarea name="motif" rows="4" placeholder="Motif du signalement" required></textarea>
     <button type="submit">Envoyer le signalement</button>
   </form>

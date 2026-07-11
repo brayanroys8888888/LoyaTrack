@@ -13,16 +13,16 @@
   {% include "annonces/_form_recherche.html" %}
 
   {% if sous_liens %}
-  <div class="puces">{% for nom, url in sous_liens %}<a href="{{ url }}">{{ nom }}</a>{% endfor %}</div>
+  <div class="chips" style="margin-top:18px">{% for nom, url in sous_liens %}<a href="{{ url }}">{{ nom }}</a>{% endfor %}</div>
   {% endif %}
 
   {% if page.object_list %}
-  <div class="grille">{% for a in page.object_list %}{% include "annonces/_carte.html" %}{% endfor %}</div>
+  <div class="grid">{% for a in page.object_list %}{% include "annonces/_carte.html" %}{% endfor %}</div>
   {% if page.has_other_pages %}
   <div class="pagination">
-    {% if page.has_previous %}<a href="?{% if qs_str %}{{ qs_str }}&{% endif %}page={{ page.previous_page_number }}">‹</a>{% endif %}
+    {% if page.has_previous %}<a href="?{% if qs_str %}{{ qs_str }}&{% endif %}page={{ page.previous_page_number }}">‹ Précédent</a>{% endif %}
     <span>Page {{ page.number }} / {{ page.paginator.num_pages }}</span>
-    {% if page.has_next %}<a href="?{% if qs_str %}{{ qs_str }}&{% endif %}page={{ page.next_page_number }}">›</a>{% endif %}
+    {% if page.has_next %}<a href="?{% if qs_str %}{{ qs_str }}&{% endif %}page={{ page.next_page_number }}">Suivant ›</a>{% endif %}
   </div>
   {% endif %}
   {% else %}
