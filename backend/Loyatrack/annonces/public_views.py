@@ -365,6 +365,10 @@ def contacter(request, slug):
     else:
         ch = Chercheur.objects.filter(id=request.session.get('chercheur_id')).first()
         if ch and ch.est_verifie:
+            # Déjà une conversation sur cette annonce → on y revient directement.
+            conv = Conversation.objects.filter(annonce=annonce, chercheur=ch).first()
+            if conv:
+                return redirect(f'/logements/messages/{conv.token}/')
             etape = 'message'
 
     return render(request, 'annonces/contacter.html', {
@@ -372,6 +376,23 @@ def contacter(request, slug):
         'message_defaut': (f"Bonjour, ce logement (« {annonce.titre} ») est-il "
                            "toujours disponible ? Quand puis-je le visiter ?"),
         'canonical': request.build_absolute_uri(request.path),
+    })
+
+
+def mes_conversations(request):
+    """Liste des conversations du chercheur (identifié par la session)."""
+    ch = Chercheur.objects.filter(id=request.session.get('chercheur_id')).first()
+    convs = []
+    if ch:
+        convs = (Conversation.objects.filter(chercheur=ch)
+                 .select_related('annonce').prefetch_related('messages')
+                 .order_by('-date_dernier_message'))
+        for c in convs:
+            m = c.messages.last()
+            c.apercu = m.corps[:80] if m else ''
+    return render(request, 'annonces/mes_conversations.html', {
+        'convs': convs, 'chercheur': ch,
+        'canonical': request.build_absolute_uri('/logements/messages/'),
     })
 
 

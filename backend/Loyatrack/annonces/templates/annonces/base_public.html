@@ -89,6 +89,14 @@
     .hero h1 { font-size:33px; margin:0 0 10px; letter-spacing:-.03em; color:#fff; }
     .hero p { color:rgba(255,255,255,.92); font-size:15.5px; margin:0; max-width:520px; }
     @media (max-width:560px){ .hero{ padding:34px 22px } .hero h1{ font-size:26px } h1{ font-size:22px } }
+    /* Conversations list */
+    .convlist { display:flex; flex-direction:column; gap:10px; max-width:620px; }
+    .convitem { display:flex; align-items:center; gap:12px; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 16px; box-shadow:var(--shadow); transition:.15s; }
+    .convitem:hover { border-color:var(--blue); transform:translateY(-1px); }
+    .convitem .ci { flex:1; min-width:0; }
+    .convitem .ct { font-weight:700; font-size:14.5px; }
+    .convitem .cp { color:var(--muted); font-size:13px; margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .convitem .ic { color:var(--soft); }
     .foot { border-top:1px solid var(--line); margin-top:36px; }
     .foot-in { max-width:1080px; margin:0 auto; padding:24px 20px; color:var(--soft); font-size:13px; display:flex; gap:8px; align-items:center; }
   </style>

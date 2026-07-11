@@ -462,6 +462,26 @@ class MessagerieWebTests(TestCase):
         self.assertTrue(r.context['envoye'])
         self.assertEqual(Signalement.objects.filter(annonce=self.annonce).count(), 1)
 
+    def _contacter(self, tel='650000030'):
+        r = self.client.post(self.url, {'etape': 'phone', 'telephone': tel, 'nom': 'Ali'})
+        self.client.post(self.url, {'etape': 'otp', 'code': r.context['dev_code']})
+        return self.client.post(self.url, {'etape': 'message', 'corps': 'Bonjour, dispo ?'})
+
+    def test_recontacter_ramene_au_fil(self):
+        self._contacter()
+        # Recliquer « Contacter » sur la même annonce → redirige direct vers le fil.
+        r = self.client.get(self.url)
+        self.assertEqual(r.status_code, 302)
+        self.assertIn('/logements/messages/', r['Location'])
+
+    def test_mes_conversations_liste(self):
+        self._contacter('650000031')
+        r = self.client.get('/logements/messages/')
+        self.assertEqual(r.status_code, 200)
+        html = r.content.decode()
+        self.assertIn(self.annonce.titre, html)
+        self.assertIn('/logements/messages/', html)
+
 
 class MessagerieAPITests(TestCase):
     def setUp(self):

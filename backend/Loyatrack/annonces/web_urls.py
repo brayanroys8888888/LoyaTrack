@@ -9,6 +9,7 @@ web_urlpatterns = [
     path('logements/annonce/<slug:slug>/', public_views.annonce_publique, name='annonce_publique'),
     path('logements/annonce/<slug:slug>/contacter/', public_views.contacter, name='annonces_contacter'),
     path('logements/annonce/<slug:slug>/signaler/', public_views.signaler, name='annonces_signaler'),
+    path('logements/messages/', public_views.mes_conversations, name='annonces_mes_conversations'),
     path('logements/messages/<uuid:token>/', public_views.fil_messages, name='annonces_fil'),
     path('logements/sitemap.xml', public_views.sitemap_annonces, name='annonces_sitemap'),
 
