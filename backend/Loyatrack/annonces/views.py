@@ -8,9 +8,12 @@ from rest_framework.response import Response
 
 from biens.models import UniteLogement
 
-from . import services
-from .models import Ville, Annonce, PhotoAnnonce
-from .serializers import VilleSerializer, AnnonceSerializer, PhotoAnnonceSerializer
+from . import services, messagerie
+from .models import Ville, Annonce, PhotoAnnonce, Conversation
+from .serializers import (
+    VilleSerializer, AnnonceSerializer, PhotoAnnonceSerializer,
+    ConversationSerializer, ConversationDetailSerializer,
+)
 
 # Type de propriété (biens) → type d'annonce. Une unité d'immeuble se loue
 # comme un appartement ; sinon on reprend le type s'il est valide.
@@ -124,3 +127,54 @@ class VilleListView(generics.ListAPIView):
 
     def get_queryset(self):
         return Ville.objects.prefetch_related('quartiers').all()
+
+
+class ConversationViewSet(viewsets.ReadOnlyModelViewSet):
+    """Conversations reçues par le bailleur sur ses annonces (messagerie)."""
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return Conversation.objects.none()
+        return (Conversation.objects.filter(bailleur=self.request.user)
+                .select_related('annonce', 'chercheur').prefetch_related('messages'))
+
+    def get_serializer_class(self):
+        return ConversationDetailSerializer if self.action == 'retrieve' else ConversationSerializer
+
+    def _detail(self, pk):
+        # Re-requête fraîche (le prefetch de messages est mis en cache).
+        conv = self.get_queryset().get(pk=pk)
+        return Response(ConversationDetailSerializer(conv, context=self.get_serializer_context()).data)
+
+    def retrieve(self, request, *args, **kwargs):
+        conv = self.get_object()
+        # Ouvrir le fil marque comme lus les messages du chercheur.
+        conv.messages.filter(expediteur='chercheur', lu=False).update(lu=True)
+        return self._detail(conv.pk)
+
+    @action(detail=True, methods=['post'])
+    def repondre(self, request, pk=None):
+        conv = self.get_object()
+        corps = (request.data.get('corps') or '').strip()
+        if not corps:
+            return Response({'erreur': 'Message vide.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            messagerie.repondre(conv, 'bailleur', corps)
+        except messagerie.MessagerieError as e:
+            return Response({'erreur': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return self._detail(conv.pk)
+
+    @action(detail=True, methods=['post'])
+    def bloquer(self, request, pk=None):
+        conv = self.get_object()
+        conv.statut = 'bloquee'
+        conv.save(update_fields=['statut'])
+        return Response(self.get_serializer(conv).data)
+
+    @action(detail=True, methods=['post'])
+    def archiver(self, request, pk=None):
+        conv = self.get_object()
+        conv.statut = 'archivee'
+        conv.save(update_fields=['statut'])
+        return Response(ConversationSerializer(conv, context=self.get_serializer_context()).data)

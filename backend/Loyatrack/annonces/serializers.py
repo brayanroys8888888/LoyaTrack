@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Ville, Quartier, Annonce, PhotoAnnonce
+from .models import Ville, Quartier, Annonce, PhotoAnnonce, Conversation, Message
 
 
 class QuartierSerializer(serializers.ModelSerializer):
@@ -67,3 +67,41 @@ class AnnonceSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'quartier': "Ce quartier n'appartient pas à la ville choisie."})
         return attrs
+
+
+# ── Messagerie (côté bailleur) ───────────────────────────────────────────────
+class MessageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Message
+        fields = ('id', 'expediteur', 'corps', 'lu', 'date_envoi')
+
+
+class ConversationSerializer(serializers.ModelSerializer):
+    chercheur_nom = serializers.SerializerMethodField()
+    annonce_titre = serializers.CharField(source='annonce.titre', read_only=True)
+    annonce_slug = serializers.CharField(source='annonce.slug', read_only=True)
+    dernier_message = serializers.SerializerMethodField()
+    non_lus = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Conversation
+        fields = ('id', 'annonce', 'annonce_titre', 'annonce_slug', 'chercheur_nom',
+                  'statut', 'date_dernier_message', 'dernier_message', 'non_lus')
+
+    def get_chercheur_nom(self, obj):
+        return obj.chercheur.nom or 'Intéressé'
+
+    def get_dernier_message(self, obj):
+        m = obj.messages.last()
+        return m.corps[:80] if m else ''
+
+    def get_non_lus(self, obj):
+        return sum(1 for m in obj.messages.all()
+                   if m.expediteur == 'chercheur' and not m.lu)
+
+
+class ConversationDetailSerializer(ConversationSerializer):
+    messages = MessageSerializer(many=True, read_only=True)
+
+    class Meta(ConversationSerializer.Meta):
+        fields = ConversationSerializer.Meta.fields + ('messages',)

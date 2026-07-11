@@ -461,3 +461,47 @@ class MessagerieWebTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertTrue(r.context['envoye'])
         self.assertEqual(Signalement.objects.filter(annonce=self.annonce).count(), 1)
+
+
+class MessagerieAPITests(TestCase):
+    def setUp(self):
+        self.bailleur = User.objects.create_user(email='b@test.cm', password='x')
+        self.autre = User.objects.create_user(email='autre@test.cm', password='x')
+        self.ville = Ville.objects.create(nom='Douala', slug='douala')
+        self.annonce = Annonce.objects.create(
+            bailleur=self.bailleur, ville=self.ville, titre='Bel appart',
+            type_bien='appartement', loyer=Decimal('120000'))
+        self.chercheur = Chercheur.objects.create(
+            telephone='650000020', nom='Ali', verifie_le=timezone.now())
+        self.conv = demarrer_conversation(self.annonce, self.chercheur, 'Bonjour, dispo ?')
+        self.client = APIClient()
+        self.client.force_authenticate(self.bailleur)
+
+    def test_liste_conversations_scoping_et_non_lus(self):
+        r = self.client.get('/api/v1/conversations/')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(r.data['results']), 1)
+        self.assertEqual(r.data['results'][0]['non_lus'], 1)  # message chercheur non lu
+        # L'autre bailleur ne voit rien.
+        self.client.force_authenticate(self.autre)
+        self.assertEqual(len(self.client.get('/api/v1/conversations/').data['results']), 0)
+
+    def test_retrieve_marque_lu(self):
+        r = self.client.get(f'/api/v1/conversations/{self.conv.id}/')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(r.data['messages']), 1)
+        # Après ouverture, plus de non-lus.
+        r = self.client.get('/api/v1/conversations/')
+        self.assertEqual(r.data['results'][0]['non_lus'], 0)
+
+    def test_repondre(self):
+        r = self.client.post(f'/api/v1/conversations/{self.conv.id}/repondre/',
+                             {'corps': 'Oui, disponible.'}, format='json')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(r.data['messages']), 2)
+        self.assertEqual(r.data['messages'][-1]['expediteur'], 'bailleur')
+
+    def test_scoping_404(self):
+        self.client.force_authenticate(self.autre)
+        self.assertEqual(
+            self.client.get(f'/api/v1/conversations/{self.conv.id}/').status_code, 404)
