@@ -598,5 +598,11 @@
   "adDescription": "Description",
   "adTypeRoom": "Room",
   "adTypeOffice": "Office",
+  "adMessages": "Messages",
+  "adNoMessages": "No messages yet.",
+  "adYourReply": "Your reply…",
+  "adBlock": "Block",
+  "adArchive": "Archive",
+  "adConversationClosed": "This conversation is closed.",
   "ok": "OK"
 }

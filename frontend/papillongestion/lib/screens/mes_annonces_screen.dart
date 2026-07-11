@@ -7,6 +7,7 @@ import '../models/models.dart' show formatMontant;
 import '../services/annonce_service.dart';
 import '../widgets/shared_widgets.dart';
 import 'add_edit_annonce_screen.dart';
+import 'messages_screen.dart';
 
 /// Libellé + couleur d'un statut d'annonce.
 (String, Color) _statut(String s, AppLocalizations t) => switch (s) {
@@ -68,6 +69,11 @@ class _MesAnnoncesScreenState extends State<MesAnnoncesScreen> {
         ),
         title: Text(t.adMine, style: TextStyle(color: context.cText, fontSize: 18, fontWeight: FontWeight.w800)),
         actions: [
+          IconButton(
+            tooltip: t.adMessages,
+            icon: const Icon(Icons.forum_outlined, color: AppColors.blue),
+            onPressed: () => Navigator.push(context, slideRoute(const MessagesScreen())),
+          ),
           IconButton(
             tooltip: t.adNew,
             icon: const Icon(Icons.add_rounded, color: AppColors.blue),

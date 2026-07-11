@@ -623,5 +623,11 @@
   "adDescription": "Description",
   "adTypeRoom": "Chambre",
   "adTypeOffice": "Bureau",
+  "adMessages": "Messages",
+  "adNoMessages": "Aucun message pour l'instant.",
+  "adYourReply": "Votre réponse…",
+  "adBlock": "Bloquer",
+  "adArchive": "Archiver",
+  "adConversationClosed": "Cette conversation est fermée.",
   "ok": "OK"
 }

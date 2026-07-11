@@ -161,3 +161,73 @@ class ResultatPublication {
   const ResultatPublication({this.annonce, this.erreurs = const []});
   bool get ok => annonce != null;
 }
+
+// ── Messagerie (côté bailleur) ───────────────────────────────────────────────
+class Message {
+  final int id;
+  final String expediteur; // 'chercheur' | 'bailleur'
+  final String corps;
+  final bool lu;
+  final String dateEnvoi;
+  const Message({
+    required this.id,
+    required this.expediteur,
+    required this.corps,
+    this.lu = false,
+    this.dateEnvoi = '',
+  });
+
+  /// Côté app (bailleur) : un message du bailleur est « le mien ».
+  bool get estMoi => expediteur == 'bailleur';
+
+  factory Message.fromJson(Map<String, dynamic> j) => Message(
+        id: j['id'],
+        expediteur: j['expediteur'] ?? 'chercheur',
+        corps: j['corps'] ?? '',
+        lu: j['lu'] ?? false,
+        dateEnvoi: j['date_envoi'] ?? '',
+      );
+}
+
+class Conversation {
+  final int id;
+  final int annonce;
+  final String annonceTitre;
+  final String annonceSlug;
+  final String chercheurNom;
+  final String statut; // ouverte | archivee | bloquee
+  final String dateDernierMessage;
+  final String dernierMessage;
+  final int nonLus;
+  final List<Message> messages;
+
+  const Conversation({
+    required this.id,
+    required this.annonce,
+    this.annonceTitre = '',
+    this.annonceSlug = '',
+    this.chercheurNom = '',
+    this.statut = 'ouverte',
+    this.dateDernierMessage = '',
+    this.dernierMessage = '',
+    this.nonLus = 0,
+    this.messages = const [],
+  });
+
+  bool get estOuverte => statut == 'ouverte';
+
+  factory Conversation.fromJson(Map<String, dynamic> j) => Conversation(
+        id: j['id'],
+        annonce: j['annonce'] ?? 0,
+        annonceTitre: j['annonce_titre'] ?? '',
+        annonceSlug: j['annonce_slug'] ?? '',
+        chercheurNom: j['chercheur_nom'] ?? '',
+        statut: j['statut'] ?? 'ouverte',
+        dateDernierMessage: j['date_dernier_message'] ?? '',
+        dernierMessage: j['dernier_message'] ?? '',
+        nonLus: j['non_lus'] ?? 0,
+        messages: ((j['messages'] as List?) ?? const [])
+            .map((m) => Message.fromJson(m))
+            .toList(),
+      );
+}

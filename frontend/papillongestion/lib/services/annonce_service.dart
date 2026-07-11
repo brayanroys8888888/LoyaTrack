@@ -143,4 +143,51 @@ class AnnonceService {
       return false;
     }
   }
+
+  // ── Messagerie (côté bailleur) ─────────────────────────────────────────────
+  Future<List<Conversation>> getConversations() async {
+    try {
+      final r = await _dio.get('conversations/');
+      if (r.statusCode == 200) {
+        return _liste(r.data).map((j) => Conversation.fromJson(j)).toList();
+      }
+      return [];
+    } catch (e) {
+      print('Erreur getConversations: $e');
+      return [];
+    }
+  }
+
+  Future<Conversation?> getConversation(int id) async {
+    try {
+      final r = await _dio.get('conversations/$id/');
+      return r.statusCode == 200 ? Conversation.fromJson(r.data) : null;
+    } catch (e) {
+      print('Erreur getConversation: $e');
+      return null;
+    }
+  }
+
+  Future<Conversation?> repondreConversation(int id, String corps) async {
+    try {
+      final r = await _dio.post('conversations/$id/repondre/', data: {'corps': corps});
+      return r.statusCode == 200 ? Conversation.fromJson(r.data) : null;
+    } catch (e) {
+      print('Erreur repondreConversation: $e');
+      return null;
+    }
+  }
+
+  Future<bool> _actionConversation(int id, String action) async {
+    try {
+      final r = await _dio.post('conversations/$id/$action/');
+      return r.statusCode == 200;
+    } catch (e) {
+      print('Erreur $action conversation: $e');
+      return false;
+    }
+  }
+
+  Future<bool> bloquerConversation(int id) => _actionConversation(id, 'bloquer');
+  Future<bool> archiverConversation(int id) => _actionConversation(id, 'archiver');
 }
