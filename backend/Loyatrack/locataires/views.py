@@ -40,6 +40,18 @@ class LocataireViewSet(viewsets.ModelViewSet):
             qs = qs.filter(archive=False)
         return qs
 
+    def list(self, request, *args, **kwargs):
+        # Statut recalculé à la lecture (évite l'affichage « Payé » alors que
+        # l'échéance est dépassée sans paiement, sans dépendre de Celery).
+        from .statut import recalculer_statuts_bailleur
+        recalculer_statuts_bailleur(request.user)
+        return super().list(request, *args, **kwargs)
+
+    def retrieve(self, request, *args, **kwargs):
+        from .statut import recalculer_statut
+        recalculer_statut(self.get_object())
+        return super().retrieve(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         serializer.save(bailleur=self.request.user)
 
@@ -288,6 +300,9 @@ class DashboardView(APIView):
     def get(self, request):
         user = request.user
         from paiements.models import Paiement
+        # Cohérence des statuts avant de calculer le cockpit (cf. locataires/statut.py).
+        from .statut import recalculer_statuts_bailleur
+        recalculer_statuts_bailleur(user)
 
         DEC = DecimalField(max_digits=12, decimal_places=2)
         zero = Value(Decimal('0'), output_field=DEC)

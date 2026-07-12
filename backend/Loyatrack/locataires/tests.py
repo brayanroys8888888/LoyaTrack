@@ -214,3 +214,33 @@ class VerifierEcheancesConfigTests(TestCase):
         r = Rappel.objects.filter(locataire=loc).first()
         self.assertIsNotNone(r)
         self.assertEqual(r.type_rappel, 'WhatsApp')
+
+
+class RecalculStatutTests(TestCase):
+    def setUp(self):
+        self.b = User.objects.create_user(email='b@test.com', password='x')
+
+    def test_en_retard_apres_echeance_sans_paiement(self):
+        from .statut import recalculer_statut
+        loc = _locataire(self.b, jour_echeance=5, statut='Payé', date_entree=date(2024, 1, 1))
+        self.assertEqual(recalculer_statut(loc, aujourd_hui=date(2026, 7, 12)), 'En retard')
+
+    def test_paye_si_mois_courant_couvert(self):
+        from .statut import recalculer_statut
+        from paiements.models import Paiement
+        loc = _locataire(self.b, jour_echeance=5, montant_loyer=Decimal('50000'), statut='En retard')
+        Paiement.objects.create(
+            locataire=loc, montant=Decimal('50000'), date_paiement=date(2026, 7, 3),
+            mode_paiement='Espèces', periode_debut=date(2026, 7, 1), periode_fin=date(2026, 7, 31),
+            statut='complet')
+        self.assertEqual(recalculer_statut(loc, aujourd_hui=date(2026, 7, 12)), 'Payé')
+
+    def test_avant_echeance_inchange(self):
+        from .statut import recalculer_statut
+        loc = _locataire(self.b, jour_echeance=28, statut='Payé')
+        self.assertEqual(recalculer_statut(loc, aujourd_hui=date(2026, 7, 12)), 'Payé')
+
+    def test_en_discussion_non_retrograde(self):
+        from .statut import recalculer_statut
+        loc = _locataire(self.b, jour_echeance=5, statut='En discussion')
+        self.assertEqual(recalculer_statut(loc, aujourd_hui=date(2026, 7, 12)), 'En discussion')
