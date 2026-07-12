@@ -604,5 +604,9 @@
   "adBlock": "Block",
   "adArchive": "Archive",
   "adConversationClosed": "This conversation is closed.",
+  "adHubTitle": "Listings & Messages",
+  "adHubSub": "Publish your units, reply to prospects",
+  "adHubUnread": "{count} unread message(s)",
+  "@adHubUnread": { "placeholders": { "count": { "type": "int" } } },
   "ok": "OK"
 }

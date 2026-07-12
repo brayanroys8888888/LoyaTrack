@@ -13,11 +13,13 @@ import 'add_locataire_screen.dart';
 import 'detail_paiement_screen.dart';
 import 'notifications_screen.dart';
 import 'biens_screen.dart';
+import 'mes_annonces_screen.dart';
 import '../services/dashboard_service.dart';
 import '../services/locataire_service.dart';
 import '../services/paiement_service.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
+import '../services/annonce_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   final void Function(int)? onNavigate;
@@ -35,6 +37,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _prenomBailleur = '';
   String _initiales = '';
   int _notifsNonLues = 0;
+  int _messagesNonLus = 0; // messages d'annonces non lus (badge marketplace)
 
   @override
   void initState() {
@@ -66,6 +69,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } catch (_) {
       // Silencieux : le header retombe sur ses valeurs par défaut.
     }
+    // Messages d'annonces non lus (isolé : ne doit pas casser le header).
+    try {
+      final convs = await AnnonceService().getConversations();
+      final total = convs.fold<int>(0, (s, c) => s + c.nonLus);
+      if (mounted) setState(() => _messagesNonLus = total);
+    } catch (_) {/* non bloquant */}
   }
 
   Future<void> _fetchData() async {
@@ -196,6 +205,60 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           )),
                       const SizedBox(height: 18),
                     ],
+                    // Annonces & Messages (marketplace) — accès direct + badge non-lus
+                    AppCard(
+                      onTap: () async {
+                        await Navigator.push(context, slideRoute(const MesAnnoncesScreen()));
+                        _onRefresh();
+                      },
+                      child: Row(children: [
+                        Stack(clipBehavior: Clip.none, children: [
+                          Container(
+                              width: 44, height: 44,
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                    colors: [Color(0xFF1565C0), Color(0xFF2E7D32)]),
+                                borderRadius: BorderRadius.circular(13),
+                              ),
+                              child: const Icon(Icons.storefront_rounded,
+                                  color: Colors.white, size: 22)),
+                          if (_messagesNonLus > 0)
+                            Positioned(
+                              right: -5, top: -5,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                constraints: const BoxConstraints(minWidth: 18),
+                                decoration: BoxDecoration(
+                                  color: AppColors.danger,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: context.cCard, width: 1.5),
+                                ),
+                                child: Text('$_messagesNonLus',
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                        color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800)),
+                              ),
+                            ),
+                        ]),
+                        const SizedBox(width: 12),
+                        Expanded(
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                              Text(t.adHubTitle,
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.w700, fontSize: 14, color: context.cText)),
+                              const SizedBox(height: 2),
+                              Text(
+                                  _messagesNonLus > 0 ? t.adHubUnread(_messagesNonLus) : t.adHubSub,
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: _messagesNonLus > 0 ? AppColors.danger : context.cTextSub)),
+                            ])),
+                        const Icon(Icons.chevron_right_rounded, color: AppColors.blue, size: 20),
+                      ]),
+                    ),
+                    const SizedBox(height: 16),
                     // Locataires récents
                     SectionHeader(t.recentTenants, action: t.seeAll, onAction: () => widget.onNavigate?.call(1)),
                     const SizedBox(height: 10),

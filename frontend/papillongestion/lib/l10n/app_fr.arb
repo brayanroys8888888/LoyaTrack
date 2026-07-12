@@ -629,5 +629,9 @@
   "adBlock": "Bloquer",
   "adArchive": "Archiver",
   "adConversationClosed": "Cette conversation est fermée.",
+  "adHubTitle": "Annonces & Messages",
+  "adHubSub": "Publiez vos logements, répondez aux intéressés",
+  "adHubUnread": "{count} message(s) non lu(s)",
+  "@adHubUnread": { "placeholders": { "count": { "type": "int" } } },
   "ok": "OK"
 }
