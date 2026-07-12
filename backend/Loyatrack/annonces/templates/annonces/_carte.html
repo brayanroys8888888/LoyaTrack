@@ -1,0 +1,19 @@
+<a class="card" href="/logements/annonce/{{ a.slug }}/">
+  <div class="ph">
+    {% with cov=a.photo_couverture %}
+    {% if cov %}<img src="{{ cov.image.url }}" alt="{{ a.titre }}" loading="lazy">{% else %}<div class="noimg">🏠</div>{% endif %}
+    {% endwith %}
+    <span class="verif"><svg class="ic"><use href="#i-check"/></svg>Vérifié</span>
+    <span class="tag">{{ a.get_type_bien_display }}</span>
+  </div>
+  <div class="body">
+    <div class="price">{{ a.loyer_fmt }} FCFA<span> /mois</span></div>
+    <div class="ct">{{ a.titre }}</div>
+    <div class="loc"><svg class="ic"><use href="#i-pin"/></svg>{{ a.quartier.nom|default:a.ville.nom }}</div>
+    <div class="specs">
+      <span><b>{{ a.nb_chambres }}</b> ch.</span>
+      <span><b>{{ a.nb_douches }}</b> dche.</span>
+      {% if a.superficie_m2 %}<span><b>{{ a.superficie_m2 }}</b> m²</span>{% endif %}
+    </div>
+  </div>
+</a>

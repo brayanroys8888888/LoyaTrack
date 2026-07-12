@@ -17,10 +17,36 @@ class AuthService {
   final Dio _dio = ApiClient().dio;
   final _storage = const FlutterSecureStorage();
 
+  /// Extrait un message lisible d'une DioException. Distingue un échec RÉSEAU
+  /// (serveur injoignable, pas de réponse) d'une erreur de validation renvoyée
+  /// par le serveur — pour ne pas masquer une panne réseau derrière un message
+  /// générique trompeur.
+  String _messageErreur(DioException e, String fallback) {
+    final t = e.type;
+    if (e.response == null ||
+        t == DioExceptionType.connectionError ||
+        t == DioExceptionType.connectionTimeout ||
+        t == DioExceptionType.receiveTimeout ||
+        t == DioExceptionType.sendTimeout) {
+      return 'Serveur injoignable. Vérifiez votre connexion internet et réessayez.';
+    }
+    final d = e.response?.data;
+    if (d is Map && d.isNotEmpty) {
+      final first = d.values.first;
+      if (first is List && first.isNotEmpty) return first.first.toString();
+      return first.toString();
+    }
+    return fallback;
+  }
+
   Future<void> _saveTokens(Map data) async {
     await _storage.write(key: 'access_token', value: data['access']);
     await _storage.write(key: 'refresh_token', value: data['refresh']);
-    await FirebaseService.registerTokenWithBackend();
+    // L'enregistrement du jeton FCM ne doit JAMAIS faire échouer la connexion /
+    // l'inscription (réseau lent, FCM indisponible…) : on l'isole.
+    try {
+      await FirebaseService.registerTokenWithBackend();
+    } catch (_) {/* non bloquant */}
   }
 
   /// Connexion par téléphone OU email + mot de passe.
@@ -39,8 +65,11 @@ class AuthService {
       }
       return const LoginResult(error: 'Réponse inattendue');
     } on DioException catch (e) {
-      final msg = e.response?.data is Map ? (e.response?.data['detail'] ?? e.response?.data.toString()) : 'Identifiants invalides';
-      return LoginResult(error: msg.toString());
+      // 'detail' = message d'erreur d'authentification renvoyé par le serveur ;
+      // sinon on distingue panne réseau vs identifiants invalides.
+      final detail = e.response?.data is Map ? e.response?.data['detail'] : null;
+      return LoginResult(
+          error: detail?.toString() ?? _messageErreur(e, 'Identifiants invalides'));
     } catch (e) {
       return LoginResult(error: e.toString());
     }
@@ -96,8 +125,7 @@ class AuthService {
       }
       return const LoginResult(error: 'Inscription échouée');
     } on DioException catch (e) {
-      final d = e.response?.data;
-      return LoginResult(error: d is Map ? d.values.first.toString() : 'Inscription échouée');
+      return LoginResult(error: _messageErreur(e, 'Inscription échouée'));
     } catch (e) {
       return LoginResult(error: e.toString());
     }

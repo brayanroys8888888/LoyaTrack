@@ -1,0 +1,31 @@
+{% extends "annonces/base_public.html" %}
+{% block title %}{{ titre }}{% endblock %}
+{% block og_title %}{{ h1 }}{% endblock %}
+{% block meta_desc %}{{ intro }}{% endblock %}
+{% block robots %}{% if not indexable %}<meta name="robots" content="noindex,follow">{% endif %}{% endblock %}
+{% block jsonld %}{% for b in jsonld_blocs %}<script type="application/ld+json">{{ b|safe }}</script>
+{% endfor %}{% endblock %}
+{% block content %}
+  <nav class="fil">{% for nom, url in fil %}{% if not forloop.last %}<a href="{{ url }}">{{ nom }}</a> › {% else %}<span>{{ nom }}</span>{% endif %}{% endfor %}</nav>
+  <h1>{{ h1 }}</h1>
+  <p class="intro">{{ intro }}</p>
+
+  {% include "annonces/_form_recherche.html" %}
+
+  {% if sous_liens %}
+  <div class="chips" style="margin-top:18px">{% for nom, url in sous_liens %}<a href="{{ url }}">{{ nom }}</a>{% endfor %}</div>
+  {% endif %}
+
+  {% if page.object_list %}
+  <div class="grid">{% for a in page.object_list %}{% include "annonces/_carte.html" %}{% endfor %}</div>
+  {% if page.has_other_pages %}
+  <div class="pagination">
+    {% if page.has_previous %}<a href="?{% if qs_str %}{{ qs_str }}&{% endif %}page={{ page.previous_page_number }}">‹ Précédent</a>{% endif %}
+    <span>Page {{ page.number }} / {{ page.paginator.num_pages }}</span>
+    {% if page.has_next %}<a href="?{% if qs_str %}{{ qs_str }}&{% endif %}page={{ page.next_page_number }}">Suivant ›</a>{% endif %}
+  </div>
+  {% endif %}
+  {% else %}
+  <p class="vide">Aucun logement disponible pour ces critères pour le moment.</p>
+  {% endif %}
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends "annonces/base_public.html" %}
+{% block title %}Mes conversations | Loyatrack{% endblock %}
+{% block robots %}<meta name="robots" content="noindex">{% endblock %}
+{% block content %}
+  <h1>Mes conversations</h1>
+  {% if convs %}
+  <p class="intro">Reprenez vos échanges avec les bailleurs.</p>
+  <div class="convlist">
+    {% for c in convs %}
+    <a class="convitem" href="/logements/messages/{{ c.token }}/">
+      <div class="ci">
+        <div class="ct">{{ c.annonce.titre }}</div>
+        <div class="cp">{{ c.apercu }}</div>
+      </div>
+      <svg class="ic"><use href="#i-pin"/></svg>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="intro">Vous n'avez pas encore de conversation.</p>
+  <p class="hint">Contactez un bailleur depuis une annonce pour démarrer un échange — vos conversations apparaîtront ici (sur ce navigateur).</p>
+  <p style="margin-top:14px"><a class="nav-cta" href="/logements/">Parcourir les annonces</a></p>
+  {% endif %}
+{% endblock %}

@@ -26,8 +26,13 @@ class ApiClient {
     dio = Dio(
       BaseOptions(
         baseUrl: ApiConfig.baseUrl,
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 10),
+        // Timeouts généreux : l'hébergement gratuit (Render) met l'instance en
+        // veille après inactivité ; le 1er appel déclenche un « cold start » de
+        // ~30-60 s. Avec 10 s, la toute première requête (ex. inscription)
+        // échouait toujours avant le réveil du serveur.
+        connectTimeout: const Duration(seconds: 60),
+        receiveTimeout: const Duration(seconds: 60),
+        sendTimeout: const Duration(seconds: 60),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',

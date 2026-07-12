@@ -1,0 +1,17 @@
+{% extends "annonces/base_public.html" %}
+{% block title %}Signaler une annonce | Loyatrack{% endblock %}
+{% block robots %}<meta name="robots" content="noindex">{% endblock %}
+{% block content %}
+  <nav class="fil"><a href="/logements/annonce/{{ annonce.slug }}/">‹ Retour à l'annonce</a></nav>
+  <h1>Signaler cette annonce</h1>
+  {% if envoye %}
+  <div class="avert">Merci. Votre signalement a bien été transmis à notre équipe de modération.</div>
+  <div class="chips"><a href="/logements/annonce/{{ annonce.slug }}/">Retour à l'annonce</a></div>
+  {% else %}
+  <p class="intro">Annonce frauduleuse, logement déjà loué, prix ou informations erronés… Décrivez le problème.</p>
+  <form class="panel" method="post">{% csrf_token %}
+    <textarea name="motif" rows="4" placeholder="Motif du signalement" required></textarea>
+    <button type="submit">Envoyer le signalement</button>
+  </form>
+  {% endif %}
+{% endblock %}

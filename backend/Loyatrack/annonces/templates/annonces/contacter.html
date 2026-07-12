@@ -1,0 +1,36 @@
+{% extends "annonces/base_public.html" %}
+{% block title %}Contacter le bailleur — {{ annonce.titre }} | Loyatrack{% endblock %}
+{% block robots %}<meta name="robots" content="noindex">{% endblock %}
+{% block content %}
+  <nav class="fil"><a href="/logements/annonce/{{ annonce.slug }}/">‹ Retour à l'annonce</a></nav>
+  <h1>Contacter le bailleur</h1>
+  <p class="intro">{{ annonce.titre }} · {{ annonce.quartier.nom|default:annonce.ville.nom }}</p>
+
+  <div class="avert">⚠️ Ne versez jamais d'argent (caution, visite…) avant d'avoir vu le logement. Loyatrack ne collecte aucun paiement pour une location trouvée ici.</div>
+
+  {% if erreur %}<div class="err">{{ erreur }}</div>{% endif %}
+
+  {% if etape == 'phone' %}
+  <form class="panel" method="post">{% csrf_token %}
+    <input type="hidden" name="etape" value="phone">
+    <label>Votre nom<input type="text" name="nom" placeholder="Votre nom"></label>
+    <label>Téléphone<input type="tel" name="telephone" placeholder="6XX XX XX XX" required></label>
+    <button type="submit">Continuer</button>
+    <p class="hint">Nous vous enverrons un code par SMS pour vérifier votre numéro (une seule fois).</p>
+  </form>
+  {% elif etape == 'otp' %}
+  <form class="panel" method="post">{% csrf_token %}
+    <input type="hidden" name="etape" value="otp">
+    <label>Code reçu par SMS<input type="text" name="code" inputmode="numeric" maxlength="6" required></label>
+    {% if dev_code %}<p class="hint">Code (mode dev) : <b>{{ dev_code }}</b></p>{% endif %}
+    <button type="submit">Vérifier</button>
+  </form>
+  {% elif etape == 'message' %}
+  <form class="panel" method="post">{% csrf_token %}
+    <input type="hidden" name="etape" value="message">
+    <label>Votre message<textarea name="corps" rows="4" required>{{ message_defaut }}</textarea></label>
+    <button type="submit">Envoyer au bailleur</button>
+    <p class="hint">Les numéros de téléphone sont masqués : échangez et convenez d'une visite ici.</p>
+  </form>
+  {% endif %}
+{% endblock %}

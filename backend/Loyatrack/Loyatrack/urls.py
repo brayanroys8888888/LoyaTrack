@@ -13,6 +13,7 @@ from drf_yasg import openapi
 
 from portail.urls import api_urlpatterns as portail_api, web_urlpatterns as portail_web
 from abonnements.web_urls import web_urlpatterns as abonnements_web
+from annonces.web_urls import web_urlpatterns as annonces_web
 from accounts.views import ParametresView
 
 schema_view = get_schema_view(
@@ -45,10 +46,13 @@ urlpatterns = [
     path('api/v1/', include('biens.urls')),
     path('api/v1/', include('comptabilite.urls')),
     path('api/v1/', include('abonnements.urls')),
+    path('api/v1/', include('annonces.urls')),
     path('api/v1/', include(portail_api)),
-    # Pages web publiques (à la racine) : portail locataire + espace abonnement bailleur
+    # Pages web publiques (à la racine) : portail locataire + espace abonnement
+    # bailleur + vitrine d'annonces (SSR, SEO)
     path('', include(portail_web)),
     path('', include(abonnements_web)),
+    path('', include(annonces_web)),
 ]
 
 if settings.DEBUG:

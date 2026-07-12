@@ -191,38 +191,28 @@ class RegisterScreen extends StatefulWidget {
 
 class _RegisterScreenState extends State<RegisterScreen> {
   final _nom    = TextEditingController();
-  final _email  = TextEditingController();
-  final _tel    = TextEditingController();
+  // Identifiant unique : email OU téléphone (détecté via « @ »).
+  final _ident  = TextEditingController();
   final _pass   = TextEditingController();
-  final _conf   = TextEditingController();
   bool _obscure = true;
   bool _terms   = false;
   bool _loading = false;
 
   @override
   void dispose() {
-    for (final c in [_nom, _email, _tel, _pass, _conf]) c.dispose();
+    for (final c in [_nom, _ident, _pass]) c.dispose();
     super.dispose();
   }
 
   void _register() async {
     final t = AppLocalizations.of(context);
     final nom = _nom.text.trim();
-    final email = _email.text.trim();
-    final tel = _tel.text.trim();
+    final ident = _ident.text.trim();
     final pass = _pass.text;
-    final conf = _conf.text;
 
-    if (nom.isEmpty || pass.isEmpty || conf.isEmpty || (email.isEmpty && tel.isEmpty)) {
+    if (nom.isEmpty || ident.isEmpty || pass.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(t.registerRequired), backgroundColor: AppColors.danger),
-      );
-      return;
-    }
-
-    if (pass != conf) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(t.passwordsDontMatch), backgroundColor: AppColors.danger),
       );
       return;
     }
@@ -235,13 +225,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
 
     setState(() => _loading = true);
-    
+
+    // Un identifiant contenant « @ » est traité comme email, sinon téléphone.
+    final estEmail = ident.contains('@');
     final parts = nom.split(' ');
     final prenom = parts.isNotEmpty ? parts.first : '';
     final nomFamille = parts.length > 1 ? parts.sublist(1).join(' ') : '';
 
     final res = await AuthService().register(
-      email: email, telephone: tel, password: pass, confirmPassword: conf,
+      email: estEmail ? ident : '',
+      telephone: estEmail ? '' : ident,
+      password: pass,
+      // Plus de champ de confirmation : le backend exige password_confirm,
+      // on renvoie donc le même mot de passe.
+      confirmPassword: pass,
       nom: nomFamille, prenom: prenom,
     );
 
@@ -304,18 +301,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       icon: Icons.person_outline_rounded,
                       context: context),
                   const SizedBox(height: 14),
-                  _Label(t.emailAddress, context),
+                  _Label(t.phoneOrEmail, context),
                   const SizedBox(height: 8),
-                  _Field(ctrl: _email, hint: 'jean@email.com',
-                      icon: Icons.email_outlined,
+                  _Field(ctrl: _ident, hint: 'jean@email.com / +237…',
+                      icon: Icons.alternate_email_rounded,
                       type: TextInputType.emailAddress,
-                      context: context),
-                  const SizedBox(height: 14),
-                  _Label(t.phone, context),
-                  const SizedBox(height: 8),
-                  _Field(ctrl: _tel, hint: '+237 6 _ _ _',
-                      icon: Icons.phone_outlined,
-                      type: TextInputType.phone,
                       context: context),
                   const SizedBox(height: 14),
                   _Label(t.password, context),
@@ -335,13 +325,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               color: context.cHint),
                           onPressed: () =>
                               setState(() => _obscure = !_obscure))),
-                  const SizedBox(height: 14),
-                  _Label(t.confirmPassword, context),
-                  const SizedBox(height: 8),
-                  _Field(ctrl: _conf, hint: t.repeatPassword,
-                      icon: Icons.lock_outline_rounded,
-                      obscure: true,
-                      context: context),
                   const SizedBox(height: 16),
                   // CGU
                   GestureDetector(

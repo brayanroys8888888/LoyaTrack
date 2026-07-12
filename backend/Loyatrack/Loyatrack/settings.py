@@ -71,6 +71,7 @@ INSTALLED_APPS = [
     'comptabilite',
     'portail',
     'abonnements',
+    'annonces',
 ]
 
 MIDDLEWARE = [
@@ -284,6 +285,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'abonnements.tasks.rappels_expiration',
         'schedule': crontab(hour=8, minute=30),
     },
+    'expirer-annonces': {
+        'task': 'annonces.tasks.expirer_annonces',
+        'schedule': crontab(hour=0, minute=50),  # après le recalcul des statuts
+    },
 }
 
 # Abonnements — prestataire de paiement (agnostique). 'fake' en dev ; 'cinetpay' en prod.
@@ -294,6 +299,11 @@ CINETPAY_SITE_ID = env('CINETPAY_SITE_ID', default='')
 CINETPAY_SECRET_KEY = env('CINETPAY_SECRET_KEY', default='')
 CINETPAY_NOTIFY_URL = env('CINETPAY_NOTIFY_URL', default='')
 CINETPAY_RETURN_URL = env('CINETPAY_RETURN_URL', default='')
+# Encaissement des loyers (mode centralisé) : webhook dédié + reversement.
+CINETPAY_NOTIFY_URL_LOYER = env('CINETPAY_NOTIFY_URL_LOYER', default='')
+# API Transfert d'argent (reversement du loyer vers le Mobile Money du bailleur).
+CINETPAY_TRANSFER_PASSWORD = env('CINETPAY_TRANSFER_PASSWORD', default='')
+CINETPAY_TRANSFER_NOTIFY_URL = env('CINETPAY_TRANSFER_NOTIFY_URL', default='')
 
 # Email Config (Mock/Console for now)
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
@@ -303,3 +313,8 @@ TWILIO_ACCOUNT_SID = env('TWILIO_ACCOUNT_SID', default='')
 TWILIO_AUTH_TOKEN = env('TWILIO_AUTH_TOKEN', default='')
 TWILIO_NUMBER = env('TWILIO_NUMBER', default='')
 TWILIO_WHATSAPP_NUMBER = env('TWILIO_WHATSAPP_NUMBER', default='')
+
+# Base URL publique du site (ex. https://loyatrack.cm) — utilisée pour les liens
+# dans les SMS de la messagerie annonces (le chercheur consulte son fil via un
+# jeton). Vide en dev : le SMS de réponse omet alors le lien.
+SITE_BASE_URL = env('SITE_BASE_URL', default='')

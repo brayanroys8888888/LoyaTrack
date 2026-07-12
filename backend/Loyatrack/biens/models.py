@@ -54,3 +54,9 @@ class UniteLogement(models.Model):
         if self.statut != nouveau:
             self.statut = nouveau
             self.save(update_fields=['statut'])
+        if nouveau == 'occupe':
+            # Dépublication auto des annonces liées : plus jamais d'annonce
+            # fantôme d'un logement déjà loué (pilier « confiance » de la vitrine).
+            # Import paresseux : `annonces` dépend de `biens` (éviter le cycle).
+            self.annonces.filter(statut='publiee').update(
+                statut='pourvue', date_publication=None)
