@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:intl/intl.dart';
@@ -138,30 +140,70 @@ class ConversationScreen extends StatefulWidget {
   State<ConversationScreen> createState() => _ConversationScreenState();
 }
 
-class _ConversationScreenState extends State<ConversationScreen> {
+class _ConversationScreenState extends State<ConversationScreen>
+    with WidgetsBindingObserver {
   final _service = AnnonceService();
   final _corps = TextEditingController();
   final _scroll = ScrollController();
   Conversation? _conv;
   bool _loading = true, _envoi = false;
+  Timer? _poll; // polling léger, actif uniquement quand l'écran est visible
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _fetch();
+    _demarrerPoll();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _arreterPoll();
     _corps.dispose();
     _scroll.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Économie de ressources : on ne sonde que si l'app est au premier plan.
+    if (state == AppLifecycleState.resumed) {
+      _rafraichirSilencieux();
+      _demarrerPoll();
+    } else {
+      _arreterPoll();
+    }
+  }
+
+  void _demarrerPoll() {
+    _poll ??= Timer.periodic(const Duration(seconds: 6), (_) => _rafraichirSilencieux());
+  }
+
+  void _arreterPoll() {
+    _poll?.cancel();
+    _poll = null;
   }
 
   Future<void> _fetch() async {
     final c = await _service.getConversation(widget.conversationId);
     if (mounted) setState(() { _conv = c; _loading = false; });
     _versLeBas();
+  }
+
+  /// Rafraîchissement discret : ne met à jour l'UI que s'il y a du nouveau,
+  /// et n'auto-scrolle que si l'utilisateur est déjà en bas (ne coupe pas la lecture).
+  Future<void> _rafraichirSilencieux() async {
+    if (_envoi) return;
+    final c = await _service.getConversation(widget.conversationId);
+    if (!mounted || c == null) return;
+    final avant = _conv?.messages.length ?? 0;
+    if (c.messages.length == avant && c.statut == _conv?.statut) return;
+    final auBas = !_scroll.hasClients ||
+        _scroll.position.pixels >= _scroll.position.maxScrollExtent - 80;
+    setState(() => _conv = c);
+    if (c.messages.length > avant && auBas) _versLeBas();
   }
 
   void _versLeBas() {
