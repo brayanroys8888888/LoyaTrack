@@ -120,17 +120,17 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                 children: [
                   Row(
                     children: [
-                      Expanded(child: _statCard(context, t.dashTotal, '${formatMontant(_totalMoisEnCours)} F', _moisEnCoursLabel, context.cSuccessBg, AppColors.success)),
+                      _statCard(context, t.dashTotal, '${formatMontant(_totalMoisEnCours)} F', _moisEnCoursLabel, context.cSuccessBg, AppColors.success),
                       const SizedBox(width: 10),
-                      Expanded(child: _statCard(context, t.histPaymentsShort, '${filtered.length}', t.histThisMonth, context.cBlue3, AppColors.blue)),
+                      _statCard(context, t.histPaymentsShort, '${filtered.length}', t.histThisMonth, context.cBlue3, AppColors.blue),
                     ],
                   ),
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      Expanded(child: _statCard(context, t.dashUnpaid, '${_stats?.impayes ?? 0}', t.histTenantsSub, context.cDangerBg, AppColors.danger)),
+                      _statCard(context, t.dashUnpaid, '${_stats?.impayes ?? 0}', t.histTenantsSub, context.cDangerBg, AppColors.danger),
                       const SizedBox(width: 10),
-                      Expanded(child: _statCard(context, t.histPenaltiesShort, formatMontant(_stats?.penalitesDues ?? 0), 'FCFA', context.cWarningBg, AppColors.warning)),
+                      _statCard(context, t.histPenaltiesShort, formatMontant(_stats?.penalitesDues ?? 0), 'FCFA', context.cWarningBg, AppColors.warning),
                     ],
                   ),
                 ],
